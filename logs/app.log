@@ -1,0 +1,309 @@
+2026-05-27 18:11:39,466 ERROR scanner: Metadata enrichment failed for ch.raiffeisen.android
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:39,515 ERROR scanner: Metadata enrichment failed for com.microsoft.office.excel
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:39,562 ERROR scanner: Metadata enrichment failed for com.microsoft.office.word
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:39,601 ERROR scanner: Metadata enrichment failed for ch.sbb.mobile.android.b2c
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:39,642 ERROR scanner: Metadata enrichment failed for com.myklarnamobile
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:39,685 ERROR scanner: Metadata enrichment failed for com.app.tgtg
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:39,732 ERROR scanner: Metadata enrichment failed for com.google.android.calendar
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:39,794 ERROR scanner: Metadata enrichment failed for ch.marko.marko
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:39,872 ERROR scanner: Metadata enrichment failed for com.samsung.android.app.notes.addons
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:39,949 ERROR scanner: Metadata enrichment failed for ch.rega.Rega
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,004 ERROR scanner: Metadata enrichment failed for com.microsoft.office.officehubrow
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,060 ERROR scanner: Metadata enrichment failed for com.sec.android.app.sbrowser
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,104 ERROR scanner: Metadata enrichment failed for net.frameo.app
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,149 ERROR scanner: Metadata enrichment failed for fr.fan.wallet
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,194 ERROR scanner: Metadata enrichment failed for com.niksoftware.snapseed
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,232 ERROR scanner: Metadata enrichment failed for ch.raiffeisen.twint
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,275 ERROR scanner: Metadata enrichment failed for ch.threema.app
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,340 ERROR scanner: Metadata enrichment failed for com.sanitas.sanitas
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,398 ERROR scanner: Metadata enrichment failed for com.guesttoguest.android
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,450 ERROR scanner: Metadata enrichment failed for io.yuka.android
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,503 ERROR scanner: Metadata enrichment failed for com.google.android.apps.docs
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,580 ERROR scanner: Metadata enrichment failed for com.pookies.food.ai
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,653 ERROR scanner: Metadata enrichment failed for com.google.android.keep
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,720 ERROR scanner: Metadata enrichment failed for ch.beekeeper.beekeeper
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,757 ERROR scanner: Metadata enrichment failed for com.google.android.contactkeys
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,802 ERROR scanner: Metadata enrichment failed for com.google.android.ims
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,843 ERROR scanner: Metadata enrichment failed for com.whatsapp.w4b
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,878 ERROR scanner: Metadata enrichment failed for org.thoughtcrime.securesms
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,917 ERROR scanner: Metadata enrichment failed for ch.magicpass.loyalty
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:11:40,966 ERROR scanner: Metadata enrichment failed for digifit.android.virtuagym.pro.letsgofitnesssuperclub
+Traceback (most recent call last):
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\scanner.py", line 99, in scan
+    dumpsys = self.adb_client.dumpsys_package(serial, package)
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 191, in dumpsys_package
+    return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Microwest-Dwenn\source\repos\DwennK\Android-Malware-Uninstaller\microwest_android_cleaner\adb_client.py", line 125, in shell
+    raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+adb_client.ADBError: adb.exe: device 'R3CTB058TSV' not found
+2026-05-27 18:19:59,835 INFO root: ADB daemon restart: Daemon ADB arrêté.
+* daemon not running; starting now at tcp:5037
+* daemon started successfully
+2026-05-29 13:58:03,351 INFO root: ADB daemon restart: Daemon ADB arrêté.
+* daemon not running; starting now at tcp:5037
+* daemon started successfully
+2026-05-29 13:58:17,353 INFO root: ADB daemon restart: Daemon ADB arrêté.
+* daemon not running; starting now at tcp:5037
+* daemon started successfully

@@ -1,0 +1,2 @@
+"""Microwest Android Cleaner."""
+

@@ -1,0 +1,264 @@
+from __future__ import annotations
+
+import logging
+import re
+import shutil
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+
+LOGGER = logging.getLogger(__name__)
+PROJECT_DIR = Path(__file__).resolve().parent
+
+
+class ADBError(RuntimeError):
+    """Base exception for ADB failures."""
+
+
+class ADBNotFoundError(ADBError):
+    """Raised when adb.exe cannot be found."""
+
+
+class ADBTimeoutError(ADBError):
+    """Raised when an ADB command times out."""
+
+
+@dataclass(slots=True)
+class DeviceInfo:
+    serial: str = ""
+    state: str = "none"
+    manufacturer: str = ""
+    model: str = ""
+    android_version: str = ""
+    message: str = "Aucun appareil détecté"
+
+
+class ADBClient:
+    """Small, conservative ADB wrapper used by the GUI.
+
+    The application intentionally exposes only metadata collection commands and
+    the allowed uninstall command: pm uninstall --user 0 PACKAGE.
+    """
+
+    def __init__(self, project_dir: Path | None = None, timeout: int = 15) -> None:
+        self.project_dir = project_dir or PROJECT_DIR
+        self.timeout = timeout
+        self.adb_path = self._find_adb()
+
+    def _find_adb(self) -> str:
+        bundled = self.project_dir / "adb" / "adb.exe"
+        if bundled.exists():
+            return str(bundled)
+
+        from_path = shutil.which("adb")
+        if from_path:
+            return from_path
+
+        raise ADBNotFoundError(
+            "ADB introuvable. Placez adb.exe avec AdbWinApi.dll et AdbWinUsbApi.dll dans le dossier adb/ "
+            "ou installez Android Platform Tools dans le PATH."
+        )
+
+    def _run(self, args: list[str], timeout: int | None = None) -> subprocess.CompletedProcess[str]:
+        command = [self.adb_path, *args]
+        LOGGER.debug("ADB command: %s", " ".join(command))
+        creationflags = 0
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            creationflags = subprocess.CREATE_NO_WINDOW
+        try:
+            return subprocess.run(
+                command,
+                text=True,
+                capture_output=True,
+                timeout=timeout or self.timeout,
+                creationflags=creationflags,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ADBTimeoutError("La commande ADB a expiré.") from exc
+
+    def start_server(self) -> str:
+        result = self._run(["start-server"], timeout=15)
+        if result.returncode != 0:
+            raise ADBError(result.stderr.strip() or result.stdout.strip() or "Impossible de démarrer le daemon ADB.")
+        return (result.stdout + result.stderr).strip() or "Daemon ADB démarré."
+
+    def kill_server(self) -> str:
+        result = self._run(["kill-server"], timeout=15)
+        if result.returncode != 0:
+            raise ADBError(result.stderr.strip() or result.stdout.strip() or "Impossible d'arrêter le daemon ADB.")
+        return (result.stdout + result.stderr).strip() or "Daemon ADB arrêté."
+
+    def restart_server(self) -> str:
+        kill_message = self.kill_server()
+        start_message = self.start_server()
+        return f"{kill_message}\n{start_message}".strip()
+
+    def devices(self) -> list[tuple[str, str]]:
+        result = self._run(["devices"])
+        if result.returncode != 0:
+            raise ADBError(result.stderr.strip() or "Impossible d'exécuter adb devices.")
+
+        devices: list[tuple[str, str]] = []
+        for line in result.stdout.splitlines()[1:]:
+            line = line.strip()
+            if not line:
+                continue
+            parts = re.split(r"\s+", line)
+            if len(parts) >= 2:
+                devices.append((parts[0], parts[1]))
+        return devices
+
+    def detect_device(self) -> DeviceInfo:
+        devices = self.devices()
+        if not devices:
+            return DeviceInfo(
+                message=(
+                    "Aucun appareil ADB détecté. Vérifiez que le téléphone est déverrouillé, "
+                    "que le débogage USB est activé et que la demande d'autorisation RSA a été acceptée."
+                )
+            )
+
+        serial, state = devices[0]
+        if state == "unauthorized":
+            return DeviceInfo(
+                serial=serial,
+                state=state,
+                message="Téléphone non autorisé : acceptez le débogage USB sur l'écran du téléphone.",
+            )
+        if state != "device":
+            return DeviceInfo(serial=serial, state=state, message=f"Téléphone détecté mais état ADB: {state}")
+
+        info = DeviceInfo(serial=serial, state="device", message="Téléphone connecté")
+        info.manufacturer = self.getprop(serial, "ro.product.manufacturer")
+        info.model = self.getprop(serial, "ro.product.model")
+        info.android_version = self.getprop(serial, "ro.build.version.release")
+        return info
+
+    def shell(self, serial: str, shell_args: list[str], timeout: int | None = None) -> str:
+        result = self._run(["-s", serial, "shell", *shell_args], timeout=timeout)
+        if result.returncode != 0:
+            raise ADBError(result.stderr.strip() or result.stdout.strip() or "Commande ADB échouée.")
+        return result.stdout.strip()
+
+    def getprop(self, serial: str, prop: str) -> str:
+        try:
+            return self.shell(serial, ["getprop", prop], timeout=8).strip()
+        except ADBError:
+            LOGGER.exception("Unable to read property %s", prop)
+            return ""
+
+    def list_packages(self, serial: str, include_system: bool = False) -> dict[str, str]:
+        args = ["pm", "list", "packages", "-i"]
+        if not include_system:
+            args.append("-3")
+        output = self.shell(serial, args, timeout=45)
+
+        packages: dict[str, str] = {}
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            if not line.startswith("package:"):
+                continue
+            without_prefix = line.removeprefix("package:")
+            package = without_prefix.split()[0]
+            installer = ""
+            match = re.search(r"installer=([^\s]+)", line)
+            if match:
+                installer = match.group(1).strip()
+            packages[package] = "" if installer in {"null", "None"} else installer
+        return packages
+
+    def list_launcher_packages(self, serial: str) -> set[str] | None:
+        commands = [
+            [
+                "cmd",
+                "package",
+                "query-activities",
+                "--brief",
+                "-a",
+                "android.intent.action.MAIN",
+                "-c",
+                "android.intent.category.LAUNCHER",
+            ],
+            [
+                "cmd",
+                "package",
+                "query-activities",
+                "-a",
+                "android.intent.action.MAIN",
+                "-c",
+                "android.intent.category.LAUNCHER",
+            ],
+        ]
+        last_error = ""
+        for command in commands:
+            try:
+                output = self.shell(serial, command, timeout=20)
+            except ADBError as exc:
+                last_error = str(exc)
+                continue
+            packages = parse_launcher_packages(output)
+            if packages:
+                return packages
+        LOGGER.info("Unable to list launcher packages: %s", last_error)
+        return None
+
+    def dumpsys_package(self, serial: str, package: str) -> str:
+        return self.shell(serial, ["dumpsys", "package", package], timeout=15)
+
+    def package_paths(self, serial: str, package: str) -> list[str]:
+        output = self.shell(serial, ["pm", "path", package], timeout=10)
+        paths: list[str] = []
+        for line in output.splitlines():
+            line = line.strip()
+            if line.startswith("package:"):
+                paths.append(line.removeprefix("package:").strip())
+        return paths
+
+    def pull_file(self, serial: str, remote_path: str, local_path: Path, timeout: int = 45) -> None:
+        # Pulling the installed APK reads only the application package file, not
+        # customer contacts, SMS, photos, accounts, or app-private data.
+        result = self._run(["-s", serial, "pull", remote_path, str(local_path)], timeout=timeout)
+        if result.returncode != 0:
+            raise ADBError(result.stderr.strip() or result.stdout.strip() or "Impossible de copier l'APK.")
+
+    def open_app_settings(self, serial: str, package: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+", package):
+            raise ADBError("Package invalide")
+        return self.shell(
+            serial,
+            [
+                "am",
+                "start",
+                "-a",
+                "android.settings.APPLICATION_DETAILS_SETTINGS",
+                "-d",
+                f"package:{package}",
+            ],
+            timeout=10,
+        )
+
+    def uninstall_user_package(self, serial: str, package: str) -> tuple[bool, str]:
+        if not re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+", package):
+            return False, "Package invalide"
+        try:
+            output = self.shell(serial, ["pm", "uninstall", "--user", "0", package], timeout=60)
+        except ADBError as exc:
+            return False, str(exc)
+        success = "Success" in output
+        return success, output or ("Success" if success else "Failure")
+
+
+def parse_launcher_packages(output: str) -> set[str]:
+    packages: set[str] = set()
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or line.startswith(("No activities", "Activities:")):
+            continue
+        for pattern in (r"(?:^|\s)([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)/", r"packageName=([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)"):
+            match = re.search(pattern, line)
+            if match and not match.group(1).startswith("android.intent."):
+                packages.add(match.group(1))
+                break
+    return packages
