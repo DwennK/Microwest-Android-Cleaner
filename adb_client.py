@@ -4,6 +4,7 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,7 +18,7 @@ class ADBError(RuntimeError):
 
 
 class ADBNotFoundError(ADBError):
-    """Raised when adb.exe cannot be found."""
+    """Raised when adb cannot be found."""
 
 
 class ADBTimeoutError(ADBError):
@@ -47,7 +48,8 @@ class ADBClient:
         self.adb_path = self._find_adb()
 
     def _find_adb(self) -> str:
-        bundled = self.project_dir / "adb" / "adb.exe"
+        bundled_name = "adb.exe" if sys.platform == "win32" else "adb"
+        bundled = self.project_dir / "adb" / bundled_name
         if bundled.exists():
             return str(bundled)
 
@@ -56,15 +58,15 @@ class ADBClient:
             return from_path
 
         raise ADBNotFoundError(
-            "ADB introuvable. Placez adb.exe avec AdbWinApi.dll et AdbWinUsbApi.dll dans le dossier adb/ "
-            "ou installez Android Platform Tools dans le PATH."
+            "ADB introuvable. Installez Android Platform Tools et ajoutez adb au PATH, "
+            "ou placez le binaire adb compatible avec votre système dans le dossier adb/."
         )
 
     def _run(self, args: list[str], timeout: int | None = None) -> subprocess.CompletedProcess[str]:
         command = [self.adb_path, *args]
         LOGGER.debug("ADB command: %s", " ".join(command))
         creationflags = 0
-        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
             creationflags = subprocess.CREATE_NO_WINDOW
         try:
             return subprocess.run(
@@ -75,6 +77,8 @@ class ADBClient:
                 creationflags=creationflags,
                 check=False,
             )
+        except OSError as exc:
+            raise ADBError(f"Impossible d'exécuter ADB: {exc}") from exc
         except subprocess.TimeoutExpired as exc:
             raise ADBTimeoutError("La commande ADB a expiré.") from exc
 

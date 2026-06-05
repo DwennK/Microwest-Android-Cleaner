@@ -1,6 +1,6 @@
 # Microwest Android Cleaner
 
-Application Windows interne pour magasin de réparation smartphone. Elle détecte un téléphone Android/Samsung via ADB USB, scanne les applications installées, calcule un score de risque local, permet une analyse IA optionnelle et exporte un rapport client.
+Application interne pour magasin de réparation smartphone. Elle détecte un téléphone Android/Samsung via ADB USB, scanne les applications installées, calcule un score de risque local, permet une analyse IA optionnelle et exporte un rapport client.
 
 L'application ne lit pas les données personnelles du client. Elle analyse uniquement les métadonnées des applications installées : package, installateur, permissions sensibles, version, état, date d'installation si disponible.
 
@@ -20,7 +20,7 @@ L'application n'utilise pas `adb root`, `su`, `rm`, `settings` dangereux, ni `co
 
 Prérequis :
 
-- Windows
+- Windows, macOS ou Linux
 - Python 3.12 ou plus récent
 - Un câble USB fonctionnel
 - ADB disponible
@@ -34,9 +34,24 @@ pip install -r requirements.txt
 python main.py
 ```
 
+Sur macOS ou Linux :
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
+
 ## Installer ADB
 
-Option 1 : placer les fichiers Windows ADB dans :
+Option 1 : placer le binaire ADB compatible avec votre système dans :
+
+```text
+microwest_android_cleaner/adb/adb
+```
+
+Sur Windows, le binaire attendu est :
 
 ```text
 microwest_android_cleaner/adb/adb.exe
@@ -44,15 +59,27 @@ microwest_android_cleaner/adb/AdbWinApi.dll
 microwest_android_cleaner/adb/AdbWinUsbApi.dll
 ```
 
-Option 2 : installer Android Platform Tools et ajouter le dossier au `PATH` Windows.
+Option 2 : installer Android Platform Tools et ajouter le dossier au `PATH`.
 
-L'application cherche d'abord `adb/adb.exe`, puis `adb` dans le `PATH`.
+Sur macOS avec Homebrew :
+
+```bash
+brew install android-platform-tools
+```
+
+L'application cherche d'abord le binaire local adapté au système (`adb/adb.exe` sur Windows, `adb/adb` sur macOS/Linux), puis `adb` dans le `PATH`.
 
 ## Nom réel des applications avec aapt2
 
-L'application peut utiliser `aapt2.exe` pour lire le vrai nom affiché dans l'APK installé. Cela aide à repérer les apps qui cachent un package banal mais affichent un nom de type `Cleaner`, `Security`, `Weather`, `Contacts` ou `System Update`.
+L'application peut utiliser `aapt2` pour lire le vrai nom affiché dans l'APK installé. Cela aide à repérer les apps qui cachent un package banal mais affichent un nom de type `Cleaner`, `Security`, `Weather`, `Contacts` ou `System Update`.
 
-Emplacement utilisé :
+Emplacement utilisé sur macOS/Linux :
+
+```text
+microwest_android_cleaner/tools/aapt2
+```
+
+Emplacement utilisé sur Windows :
 
 ```text
 microwest_android_cleaner/tools/aapt2.exe
@@ -60,7 +87,7 @@ microwest_android_cleaner/tools/aapt2.exe
 
 Pendant le scan, l'application récupère temporairement le fichier APK installé, lit uniquement ses métadonnées publiques avec `aapt2 dump badging`, puis supprime le fichier temporaire. Elle ne lit pas les données personnelles du client.
 
-Si `aapt2.exe` est absent, le scan continue avec un nom dérivé du package.
+Si `aapt2` est absent, le scan continue avec un nom dérivé du package.
 
 Quand une icône raster est disponible dans l'APK (`png`, `webp`, `jpg`), elle est extraite dans :
 

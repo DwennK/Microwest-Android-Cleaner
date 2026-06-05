@@ -4,6 +4,7 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,9 +34,10 @@ class ApkMetadataExtractor:
         return bool(self.aapt2_path)
 
     def _find_aapt2(self) -> str:
+        executable_name = "aapt2.exe" if sys.platform == "win32" else "aapt2"
         candidates = [
-            self.project_dir / "tools" / "aapt2.exe",
-            self.project_dir / "adb" / "aapt2.exe",
+            self.project_dir / "tools" / executable_name,
+            self.project_dir / "adb" / executable_name,
         ]
         for candidate in candidates:
             if candidate.exists():
@@ -47,7 +49,7 @@ class ApkMetadataExtractor:
             return ApkMetadata()
 
         creationflags = 0
-        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
             creationflags = subprocess.CREATE_NO_WINDOW
 
         try:
