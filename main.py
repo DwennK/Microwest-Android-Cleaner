@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSize, Qt, QThread, Signal
+from PySide6.QtCore import QLockFile, QSize, Qt, QThread, Signal
 from PySide6.QtGui import QAction, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -837,6 +838,13 @@ def notification_summary(app: AppInfo) -> str:
 def main() -> int:
     setup_logging()
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
+
+    lock_file = QLockFile(str(Path(tempfile.gettempdir()) / "microwest_android_cleaner.lock"))
+    if not lock_file.tryLock(100):
+        logging.info("Microwest Android Cleaner is already running; exiting duplicate instance.")
+        return 0
+
     window = MainWindow()
     window.show()
     return app.exec()
