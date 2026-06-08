@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import logging
+import platform
 import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QLockFile, QSize, Qt, QThread, Signal
+from PySide6.QtCore import QLockFile, QSize, Qt, QThread, Signal, qVersion
 from PySide6.QtGui import QAction, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -31,8 +34,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from adb_client import ADBClient, ADBError, ADBNotFoundError, DeviceInfo
+from adb_client import ADBClient, ADBError, ADBDevice, ADBNotFoundError, DeviceInfo, parse_devices_l
 from ai_analyzer import AIAnalyzer, AIResult, ai_payload_from_row
+from apk_metadata import ApkMetadataExtractor
 from database import ReputationDatabase
 from report_generator import export_html_report
 from risk_rules import evaluate_app
@@ -55,14 +59,43 @@ def setup_logging() -> None:
     )
 
 
+def portable_runtime_checks() -> list[tuple[str, str, str]]:
+    checks: list[tuple[str, str, str]] = []
+    paths = [
+        ("Dossier app", PROJECT_DIR),
+        ("Base locale", PROJECT_DIR / "data"),
+        ("Logs", PROJECT_DIR / "logs"),
+        ("Cache", PROJECT_DIR / "cache"),
+        ("Rapports", PROJECT_DIR / "reports"),
+        ("ADB portable", PROJECT_DIR / "adb"),
+        ("Outils", PROJECT_DIR / "tools"),
+    ]
+    for label, path in paths:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / ".write_test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            checks.append((label, str(path), "OK écriture"))
+        except Exception as exc:  # noqa: BLE001
+            checks.append((label, str(path), f"ERREUR écriture : {exc}"))
+    return checks
+
+
 class DetectWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
 
+    def __init__(self, serial: str = "") -> None:
+        super().__init__()
+        self.serial = serial
+
     def run(self) -> None:
         try:
-            device = ADBClient().detect_device()
-            self.succeeded.emit(device)
+            client = ADBClient()
+            devices = client.detailed_devices()
+            device = client.detect_device(self.serial)
+            self.succeeded.emit({"device": device, "devices": devices, "adb_path": client.adb_path})
         except ADBNotFoundError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -93,6 +126,53 @@ class ADBDaemonWorker(QThread):
         except Exception as exc:  # noqa: BLE001
             logging.exception("ADB daemon action failed")
             self.failed.emit(f"Action daemon ADB impossible : {exc}")
+
+
+class ADBDiagnosticWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, repair: bool = False, serial: str = "") -> None:
+        super().__init__()
+        self.repair = repair
+        self.serial = serial
+
+    def run(self) -> None:
+        try:
+            report: dict[str, Any] = {
+                "repair": self.repair,
+                "portable": portable_runtime_checks(),
+                "adb_path": "",
+                "adb_version": "",
+                "adb_restart": "",
+                "adb_error": "",
+                "devices_output": "",
+                "devices": [],
+                "device": DeviceInfo(),
+                "aapt2_path": "",
+                "aapt2_available": False,
+            }
+            extractor = ApkMetadataExtractor()
+            report["aapt2_path"] = extractor.aapt2_path
+            report["aapt2_available"] = extractor.available
+            try:
+                client = ADBClient()
+                report["adb_path"] = client.adb_path
+                if self.repair:
+                    report["adb_restart"] = client.restart_server()
+                    time.sleep(1)
+                report["adb_version"] = client.version()
+                devices_output = client.devices_output()
+                devices = parse_devices_l(devices_output)
+                report["devices_output"] = devices_output
+                report["devices"] = devices
+                report["device"] = client.detect_device(self.serial) if devices else DeviceInfo()
+            except ADBError as exc:
+                report["adb_error"] = str(exc)
+            self.succeeded.emit(report)
+        except Exception as exc:  # noqa: BLE001
+            logging.exception("ADB diagnostic failed")
+            self.failed.emit(f"Diagnostic ADB impossible : {exc}")
 
 
 class ScanWorker(QThread):
@@ -285,6 +365,8 @@ class MainWindow(QMainWindow):
         self.model_label = QLabel("-")
         self.android_label = QLabel("-")
         self.serial_label = QLabel("-")
+        self.device_combo = QComboBox()
+        self.device_combo.addItem("Auto", "")
         state_layout.addWidget(QLabel("Statut"), 0, 0)
         state_layout.addWidget(self.status_label, 0, 1)
         state_layout.addWidget(QLabel("Modèle"), 1, 0)
@@ -293,10 +375,14 @@ class MainWindow(QMainWindow):
         state_layout.addWidget(self.android_label, 1, 3)
         state_layout.addWidget(QLabel("Numéro ADB"), 0, 2)
         state_layout.addWidget(self.serial_label, 0, 3)
+        state_layout.addWidget(QLabel("Appareil"), 2, 0)
+        state_layout.addWidget(self.device_combo, 2, 1, 1, 3)
         main_layout.addWidget(state_box)
 
         toolbar = QHBoxLayout()
         self.detect_button = QPushButton("Détecter téléphone")
+        self.adb_diagnostic_button = QPushButton("Diagnostic ADB")
+        self.adb_repair_button = QPushButton("Réparer connexion")
         self.adb_daemon_button = QPushButton("Redémarrer ADB")
         self.adb_daemon_button.setContextMenuPolicy(Qt.CustomContextMenu)
         self.scan_button = QPushButton("Scanner les apps")
@@ -307,6 +393,8 @@ class MainWindow(QMainWindow):
         self.reload_button = QPushButton("Recharger blacklist/whitelist")
         for button in (
             self.detect_button,
+            self.adb_diagnostic_button,
+            self.adb_repair_button,
             self.adb_daemon_button,
             self.scan_button,
             self.ai_button,
@@ -374,6 +462,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self.detect_button.clicked.connect(self.detect_phone)
+        self.adb_diagnostic_button.clicked.connect(lambda: self.run_adb_diagnostic(repair=False))
+        self.adb_repair_button.clicked.connect(lambda: self.run_adb_diagnostic(repair=True))
         self.adb_daemon_button.clicked.connect(lambda: self.run_adb_daemon_action("restart"))
         self.adb_daemon_button.customContextMenuRequested.connect(self.open_adb_daemon_menu)
         self.scan_button.clicked.connect(self.scan_apps)
@@ -419,12 +509,15 @@ class MainWindow(QMainWindow):
     def set_busy(self, busy: bool, message: str = "") -> None:
         for widget in (
             self.detect_button,
+            self.adb_diagnostic_button,
+            self.adb_repair_button,
             self.adb_daemon_button,
             self.scan_button,
             self.open_settings_button,
             self.uninstall_button,
             self.report_button,
             self.reload_button,
+            self.device_combo,
         ):
             widget.setEnabled(not busy)
         self._apply_ai_button_state()
@@ -435,8 +528,18 @@ class MainWindow(QMainWindow):
 
     def detect_phone(self) -> None:
         self.set_busy(True, "Détection du téléphone...")
-        worker = DetectWorker()
+        worker = DetectWorker(self.selected_device_serial())
         worker.succeeded.connect(self.on_device_detected)
+        worker.failed.connect(self.on_worker_failed)
+        worker.finished.connect(lambda: self.set_busy(False))
+        self.current_worker = worker
+        worker.start()
+
+    def run_adb_diagnostic(self, repair: bool = False) -> None:
+        message = "Réparation de la connexion ADB..." if repair else "Diagnostic ADB en cours..."
+        self.set_busy(True, message)
+        worker = ADBDiagnosticWorker(repair=repair, serial=self.selected_device_serial())
+        worker.succeeded.connect(self.on_adb_diagnostic_finished)
         worker.failed.connect(self.on_worker_failed)
         worker.finished.connect(lambda: self.set_busy(False))
         self.current_worker = worker
@@ -478,12 +581,61 @@ class MainWindow(QMainWindow):
         self.status_label.setText(labels.get(action, "Action daemon ADB terminée"))
         logging.info("ADB daemon %s: %s", action, output)
 
-    def on_device_detected(self, device: DeviceInfo) -> None:
+    def on_device_detected(self, payload: dict[str, Any]) -> None:
+        device: DeviceInfo = payload["device"]
+        self.update_device_combo(payload.get("devices", []), device.serial)
         self.device = device
         self.status_label.setText(device.message)
         self.model_label.setText(f"{device.manufacturer} {device.model}".strip() or "-")
         self.android_label.setText(device.android_version or "-")
         self.serial_label.setText(device.serial or "-")
+
+    def on_adb_diagnostic_finished(self, report: dict[str, Any]) -> None:
+        device: DeviceInfo = report.get("device", DeviceInfo())
+        self.update_device_combo(report.get("devices", []), device.serial)
+        self.device = device
+        self.status_label.setText("Réparation ADB terminée" if report.get("repair") else "Diagnostic ADB terminé")
+        self.model_label.setText(f"{device.manufacturer} {device.model}".strip() or "-")
+        self.android_label.setText(device.android_version or "-")
+        self.serial_label.setText(device.serial or "-")
+        self.show_diagnostic_report(report)
+
+    def selected_device_serial(self) -> str:
+        value = self.device_combo.currentData()
+        return str(value or "")
+
+    def update_device_combo(self, devices: list[ADBDevice], selected_serial: str = "") -> None:
+        current = selected_serial or self.selected_device_serial()
+        self.device_combo.blockSignals(True)
+        self.device_combo.clear()
+        self.device_combo.addItem("Auto", "")
+        for device in devices:
+            label = f"{device.serial} ({device.state})"
+            if device.details:
+                label = f"{label} - {device.details}"
+            self.device_combo.addItem(label, device.serial)
+        if current:
+            index = self.device_combo.findData(current)
+            if index >= 0:
+                self.device_combo.setCurrentIndex(index)
+        self.device_combo.blockSignals(False)
+
+    def show_diagnostic_report(self, report: dict[str, Any]) -> None:
+        device: DeviceInfo = report.get("device", DeviceInfo())
+        devices: list[ADBDevice] = report.get("devices", [])
+        summary = device.message if devices else "Aucun appareil ADB détecté."
+        if report.get("adb_error"):
+            summary = f"ADB indisponible : {report['adb_error']}"
+        if report.get("repair"):
+            summary = f"Réparation ADB terminée.\n{summary}"
+
+        details = format_diagnostic_report(report)
+        message_box = QMessageBox(self)
+        message_box.setWindowTitle("Diagnostic ADB")
+        message_box.setIcon(QMessageBox.Information)
+        message_box.setText(summary)
+        message_box.setDetailedText(details)
+        message_box.exec()
 
     def scan_apps(self) -> None:
         if self.device.state != "device" or not self.device.serial:
@@ -833,6 +985,92 @@ def notification_summary(app: AppInfo) -> str:
     if not app.notification_audit:
         return "-"
     return ", ".join(app.notification_audit[:2])
+
+
+def format_diagnostic_report(report: dict[str, Any]) -> str:
+    lines = [
+        "Environnement",
+        f"- OS : {platform.platform()}",
+        f"- Python : {sys.version.split()[0]}",
+        f"- Qt : {qVersion()}",
+        f"- Dossier app : {PROJECT_DIR}",
+        "",
+        "Stockage portable",
+    ]
+    for label, path, status in report.get("portable", []):
+        lines.append(f"- {label} : {status} ({path})")
+
+    lines.extend(
+        [
+            "",
+            "ADB",
+            f"- Chemin : {report.get('adb_path') or 'introuvable'}",
+            f"- Version : {first_line(report.get('adb_version', '')) or 'non disponible'}",
+        ]
+    )
+    if report.get("adb_error"):
+        lines.append(f"- Erreur : {report['adb_error']}")
+    if report.get("adb_restart"):
+        lines.append(f"- Réparation : {report['adb_restart']}")
+
+    lines.extend(
+        [
+            "",
+            "aapt2",
+            f"- Chemin : {report.get('aapt2_path') or 'introuvable'}",
+            f"- Disponible : {'oui' if report.get('aapt2_available') else 'non'}",
+            "",
+            "Téléphones",
+        ]
+    )
+    devices: list[ADBDevice] = report.get("devices", [])
+    if devices:
+        for device in devices:
+            detail = f" - {device.details}" if device.details else ""
+            lines.append(f"- {device.serial} : {device.state}{detail}")
+    else:
+        lines.append("- Aucun appareil listé par ADB")
+
+    device_info: DeviceInfo = report.get("device", DeviceInfo())
+    lines.extend(
+        [
+            "",
+            "Sélection",
+            f"- Serial : {device_info.serial or '-'}",
+            f"- État : {device_info.state}",
+            f"- Modèle : {f'{device_info.manufacturer} {device_info.model}'.strip() or '-'}",
+            f"- Android : {device_info.android_version or '-'}",
+            f"- Message : {device_info.message}",
+            "",
+            "Sortie adb devices -l",
+            report.get("devices_output") or "(vide)",
+            "",
+            "Conseils",
+            adb_state_advice(device_info.state, bool(devices)),
+        ]
+    )
+    return "\n".join(lines)
+
+
+def first_line(value: str) -> str:
+    return next((line.strip() for line in value.splitlines() if line.strip()), "")
+
+
+def adb_state_advice(state: str, has_devices: bool) -> str:
+    if not has_devices:
+        return (
+            "- Branchez le téléphone en USB.\n"
+            "- Déverrouillez l'écran.\n"
+            "- Activez le débogage USB dans les options développeur.\n"
+            "- Essayez un autre câble USB si rien n'apparaît."
+        )
+    if state == "unauthorized":
+        return "- Acceptez la demande d'autorisation RSA sur l'écran du téléphone, puis relancez la détection."
+    if state == "offline":
+        return "- Débranchez/rebranchez le câble, puis utilisez Réparer connexion."
+    if state == "device":
+        return "- Connexion ADB opérationnelle."
+    return "- Utilisez Réparer connexion, puis vérifiez l'écran du téléphone."
 
 
 def main() -> int:

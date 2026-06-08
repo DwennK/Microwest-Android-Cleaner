@@ -111,6 +111,34 @@ Si l'état affiché est `unauthorized`, le client doit accepter le débogage USB
 
 Le bouton `Redémarrer ADB` relance le daemon ADB local avec `adb kill-server` puis `adb start-server`. Un clic droit sur ce bouton permet aussi de choisir `Démarrer daemon ADB` ou `Arrêter daemon ADB`.
 
+Le bouton `Diagnostic ADB` affiche un rapport local :
+
+- système détecté, version Python/Qt et dossier portable utilisé ;
+- accès en écriture aux dossiers `data`, `logs`, `cache` et `reports` ;
+- chemin et version du binaire `adb` utilisé ;
+- disponibilité optionnelle de `aapt2` ;
+- sortie brute `adb devices -l` ;
+- état du téléphone sélectionné avec conseils adaptés.
+
+Le bouton `Réparer connexion` relance ADB, attend brièvement, relit `adb devices -l`, puis met à jour la sélection téléphone. Il est utile après un état `offline`, `unauthorized`, un câble changé ou un téléphone rebranché.
+
+Si plusieurs téléphones sont connectés, la liste `Appareil` permet de choisir explicitement le numéro ADB à scanner. En mode `Auto`, l'application choisit le premier appareil autorisé (`device`) retourné par ADB.
+
+## Mode portable
+
+L'application reste portable : les fichiers runtime restent dans le dossier de l'application.
+
+```text
+microwest_android_cleaner/data/
+microwest_android_cleaner/logs/
+microwest_android_cleaner/cache/
+microwest_android_cleaner/reports/
+microwest_android_cleaner/adb/
+microwest_android_cleaner/tools/
+```
+
+Le diagnostic vérifie que ces dossiers sont créables et accessibles en écriture. Aucun déplacement vers `~/Library` n'est requis sur macOS.
+
 ## Utilisation
 
 1. Cliquer sur `Détecter téléphone`.

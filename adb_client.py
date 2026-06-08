@@ -35,6 +35,13 @@ class DeviceInfo:
     message: str = "Aucun appareil détecté"
 
 
+@dataclass(slots=True)
+class ADBDevice:
+    serial: str
+    state: str
+    details: str = ""
+
+
 class ADBClient:
     """Small, conservative ADB wrapper used by the GUI.
 
@@ -99,23 +106,26 @@ class ADBClient:
         start_message = self.start_server()
         return f"{kill_message}\n{start_message}".strip()
 
-    def devices(self) -> list[tuple[str, str]]:
-        result = self._run(["devices"])
+    def version(self) -> str:
+        result = self._run(["version"], timeout=10)
         if result.returncode != 0:
-            raise ADBError(result.stderr.strip() or "Impossible d'exécuter adb devices.")
+            raise ADBError(result.stderr.strip() or result.stdout.strip() or "Impossible d'exécuter adb version.")
+        return result.stdout.strip()
 
-        devices: list[tuple[str, str]] = []
-        for line in result.stdout.splitlines()[1:]:
-            line = line.strip()
-            if not line:
-                continue
-            parts = re.split(r"\s+", line)
-            if len(parts) >= 2:
-                devices.append((parts[0], parts[1]))
-        return devices
+    def devices_output(self) -> str:
+        result = self._run(["devices", "-l"], timeout=10)
+        if result.returncode != 0:
+            raise ADBError(result.stderr.strip() or result.stdout.strip() or "Impossible d'exécuter adb devices -l.")
+        return result.stdout.strip()
 
-    def detect_device(self) -> DeviceInfo:
-        devices = self.devices()
+    def detailed_devices(self) -> list[ADBDevice]:
+        return parse_devices_l(self.devices_output())
+
+    def devices(self) -> list[tuple[str, str]]:
+        return [(device.serial, device.state) for device in self.detailed_devices()]
+
+    def detect_device(self, serial: str = "") -> DeviceInfo:
+        devices = self.detailed_devices()
         if not devices:
             return DeviceInfo(
                 message=(
@@ -124,20 +134,32 @@ class ADBClient:
                 )
             )
 
-        serial, state = devices[0]
-        if state == "unauthorized":
+        selected = select_device(devices, serial)
+        if selected is None:
             return DeviceInfo(
-                serial=serial,
-                state=state,
+                state="none",
+                message=f"Appareil ADB introuvable pour le numéro sélectionné : {serial}",
+            )
+
+        if selected.state == "unauthorized":
+            return DeviceInfo(
+                serial=selected.serial,
+                state=selected.state,
                 message="Téléphone non autorisé : acceptez le débogage USB sur l'écran du téléphone.",
             )
-        if state != "device":
-            return DeviceInfo(serial=serial, state=state, message=f"Téléphone détecté mais état ADB: {state}")
+        if selected.state != "device":
+            return DeviceInfo(
+                serial=selected.serial,
+                state=selected.state,
+                message=f"Téléphone détecté mais état ADB: {selected.state}",
+            )
 
-        info = DeviceInfo(serial=serial, state="device", message="Téléphone connecté")
-        info.manufacturer = self.getprop(serial, "ro.product.manufacturer")
-        info.model = self.getprop(serial, "ro.product.model")
-        info.android_version = self.getprop(serial, "ro.build.version.release")
+        info = DeviceInfo(serial=selected.serial, state="device", message="Téléphone connecté")
+        info.manufacturer = self.getprop(selected.serial, "ro.product.manufacturer")
+        info.model = self.getprop(selected.serial, "ro.product.model")
+        info.android_version = self.getprop(selected.serial, "ro.build.version.release")
+        if not serial and len(devices) > 1:
+            info.message = "Téléphone connecté. Plusieurs appareils détectés : vérifiez la sélection."
         return info
 
     def shell(self, serial: str, shell_args: list[str], timeout: int | None = None) -> str:
@@ -266,3 +288,23 @@ def parse_launcher_packages(output: str) -> set[str]:
                 packages.add(match.group(1))
                 break
     return packages
+
+
+def parse_devices_l(output: str) -> list[ADBDevice]:
+    devices: list[ADBDevice] = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or line.startswith("List of devices"):
+            continue
+        parts = re.split(r"\s+", line, maxsplit=2)
+        if len(parts) < 2:
+            continue
+        details = parts[2] if len(parts) > 2 else ""
+        devices.append(ADBDevice(serial=parts[0], state=parts[1], details=details))
+    return devices
+
+
+def select_device(devices: list[ADBDevice], serial: str = "") -> ADBDevice | None:
+    if serial:
+        return next((device for device in devices if device.serial == serial), None)
+    return next((device for device in devices if device.state == "device"), devices[0] if devices else None)
