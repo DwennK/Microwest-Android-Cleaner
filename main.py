@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import platform
+import csv
 import sys
 import tempfile
 import time
@@ -9,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QLockFile, QSize, Qt, QThread, Signal, qVersion
+from PySide6.QtCore import QLockFile, QSize, Qt, QThread, QTimer, Signal, qVersion
 from PySide6.QtGui import QAction, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSplitter,
     QTableWidget,
@@ -45,6 +47,7 @@ from scanner import AppInfo, AppScanner
 
 PROJECT_DIR = Path(__file__).resolve().parent
 LOG_DIR = PROJECT_DIR / "logs"
+REPORTS_DIR = PROJECT_DIR / "reports"
 
 
 def setup_logging() -> None:
@@ -175,36 +178,72 @@ class ADBDiagnosticWorker(QThread):
             self.failed.emit(f"Diagnostic ADB impossible : {exc}")
 
 
+class DevicesRefreshWorker(QThread):
+    succeeded = Signal(object)
+
+    def run(self) -> None:
+        try:
+            client = ADBClient()
+            self.succeeded.emit(client.detailed_devices())
+        except ADBError:
+            self.succeeded.emit([])
+
+
 class ScanWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
+    progress = Signal(int, int, str)
 
     def __init__(self, serial: str, include_system: bool, device: DeviceInfo) -> None:
         super().__init__()
         self.serial = serial
         self.include_system = include_system
         self.device = device
+        self.cancel_requested = False
+
+    def cancel(self) -> None:
+        self.cancel_requested = True
+        self.requestInterruption()
 
     def run(self) -> None:
         try:
             adb = ADBClient()
             db = ReputationDatabase()
             scanner = AppScanner(adb)
-            apps = scanner.scan(self.serial, include_system=self.include_system)
-            rows = []
-            for app in apps:
+            packages = adb.list_packages(self.serial, include_system=self.include_system)
+            launcher_packages = adb.list_launcher_packages(self.serial)
+            rows: list[dict[str, Any]] = []
+            errors: list[str] = []
+            total = len(packages)
+            for index, (package, installer) in enumerate(packages.items(), start=1):
+                if self.cancel_requested or self.isInterruptionRequested():
+                    break
+                self.progress.emit(index, total, package)
+                app = AppInfo(package_name=package, installer=installer, is_system_app=self.include_system)
+                try:
+                    if launcher_packages is not None:
+                        app.has_launcher_entry = package in launcher_packages
+                    dumpsys = adb.dumpsys_package(self.serial, package)
+                    scanner._enrich_from_dumpsys(app, dumpsys)
+                    scanner._enrich_from_apk(self.serial, app)
+                    scanner._finalize_audits(app)
+                except Exception as exc:  # noqa: BLE001 - partial scan should continue.
+                    logging.exception("Metadata enrichment failed for %s", package)
+                    app.dumpsys_error = str(exc)
+                    errors.append(f"{package}: {exc}")
                 risk = evaluate_app(app, db.reputation_for(app.package_name))
                 rows.append({"app": app, "risk": risk, "ai": None, "ai_text": ""})
             rows.sort(key=lambda item: item["risk"].score, reverse=True)
             suspicious_count = len([r for r in rows if r["risk"].score >= 60 and r["risk"].recommended_action != "do_not_touch"])
-            db.record_scan(
-                datetime.now().isoformat(timespec="seconds"),
-                self.device.model,
-                self.device.android_version,
-                len(rows),
-                suspicious_count,
-            )
-            self.succeeded.emit(rows)
+            if rows:
+                db.record_scan(
+                    datetime.now().isoformat(timespec="seconds"),
+                    self.device.model,
+                    self.device.android_version,
+                    len(rows),
+                    suspicious_count,
+                )
+            self.succeeded.emit({"rows": rows, "errors": errors, "cancelled": self.cancel_requested, "total": total})
         except Exception as exc:  # noqa: BLE001
             logging.exception("Scan failed")
             self.failed.emit(f"Scan impossible : {exc}")
@@ -343,8 +382,17 @@ class MainWindow(QMainWindow):
         self.rows: list[dict[str, Any]] = []
         self.uninstalled: list[dict[str, str]] = []
         self.current_worker: QThread | None = None
+        self.scan_worker: ScanWorker | None = None
+        self.refresh_worker: DevicesRefreshWorker | None = None
+        self.last_diagnostic_text = ""
+        self.last_devices_signature = ""
+        self.is_busy = False
         self._build_ui()
         self._apply_ai_button_state()
+        self.device_refresh_timer = QTimer(self)
+        self.device_refresh_timer.setInterval(8000)
+        self.device_refresh_timer.timeout.connect(self.refresh_devices_if_idle)
+        self.device_refresh_timer.start()
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -386,10 +434,16 @@ class MainWindow(QMainWindow):
         self.adb_daemon_button = QPushButton("Redémarrer ADB")
         self.adb_daemon_button.setContextMenuPolicy(Qt.CustomContextMenu)
         self.scan_button = QPushButton("Scanner les apps")
+        self.cancel_scan_button = QPushButton("Annuler scan")
         self.ai_button = QPushButton("Analyser avec IA")
         self.open_settings_button = QPushButton("Paramètres app")
         self.uninstall_button = QPushButton("Désinstaller sélection")
         self.report_button = QPushButton("Exporter rapport")
+        self.csv_button = QPushButton("Exporter CSV")
+        self.copy_diagnostic_button = QPushButton("Copier diagnostic")
+        self.export_diagnostic_button = QPushButton("Exporter diagnostic")
+        self.history_button = QPushButton("Historique")
+        self.demo_button = QPushButton("Mode démo")
         self.reload_button = QPushButton("Recharger blacklist/whitelist")
         for button in (
             self.detect_button,
@@ -397,27 +451,66 @@ class MainWindow(QMainWindow):
             self.adb_repair_button,
             self.adb_daemon_button,
             self.scan_button,
+            self.cancel_scan_button,
             self.ai_button,
             self.open_settings_button,
             self.uninstall_button,
-            self.report_button,
-            self.reload_button,
         ):
             toolbar.addWidget(button)
         toolbar.addStretch(1)
         main_layout.addLayout(toolbar)
+
+        export_toolbar = QHBoxLayout()
+        for button in (
+            self.report_button,
+            self.csv_button,
+            self.copy_diagnostic_button,
+            self.export_diagnostic_button,
+            self.history_button,
+            self.demo_button,
+            self.reload_button,
+        ):
+            export_toolbar.addWidget(button)
+        export_toolbar.addStretch(1)
+        main_layout.addLayout(export_toolbar)
+
+        self.cancel_scan_button.setEnabled(False)
+        self.copy_diagnostic_button.setEnabled(False)
+        self.export_diagnostic_button.setEnabled(False)
+
+        progress_layout = QHBoxLayout()
+        self.scan_progress = QProgressBar()
+        self.scan_progress.setRange(0, 100)
+        self.scan_progress.setValue(0)
+        self.scan_progress.setTextVisible(True)
+        self.progress_label = QLabel("Prêt")
+        progress_layout.addWidget(self.scan_progress, 1)
+        progress_layout.addWidget(self.progress_label)
+        main_layout.addLayout(progress_layout)
 
         filters = QHBoxLayout()
         self.include_system_checkbox = QCheckBox("Afficher apps système")
         self.hide_safe_checkbox = QCheckBox("Masquer apps sûres")
         self.hidden_apps_checkbox = QCheckBox("Apps cachées")
         self.notification_audit_checkbox = QCheckBox("Audit notifications")
+        self.sideload_checkbox = QCheckBox("Sideload")
+        self.score_filter = QComboBox()
+        self.score_filter.addItem("Score min: 0", 0)
+        self.score_filter.addItem("Score min: 30", 30)
+        self.score_filter.addItem("Score min: 60", 60)
+        self.permission_filter = QComboBox()
+        self.permission_filter.addItem("Toutes permissions", "")
+        for permission in ("SMS", "CONTACTS", "CALL", "ACCESSIBILITY", "NOTIFICATION", "OVERLAY", "DEVICE_ADMIN", "VPN"):
+            self.permission_filter.addItem(permission, permission)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Rechercher nom, package, installateur...")
         filters.addWidget(self.include_system_checkbox)
         filters.addWidget(self.hide_safe_checkbox)
         filters.addWidget(self.hidden_apps_checkbox)
         filters.addWidget(self.notification_audit_checkbox)
+        filters.addWidget(self.sideload_checkbox)
+        filters.addWidget(self.score_filter)
+        filters.addWidget(self.permission_filter)
         filters.addWidget(self.search_input, 1)
         main_layout.addLayout(filters)
 
@@ -467,15 +560,24 @@ class MainWindow(QMainWindow):
         self.adb_daemon_button.clicked.connect(lambda: self.run_adb_daemon_action("restart"))
         self.adb_daemon_button.customContextMenuRequested.connect(self.open_adb_daemon_menu)
         self.scan_button.clicked.connect(self.scan_apps)
+        self.cancel_scan_button.clicked.connect(self.cancel_scan)
         self.ai_button.clicked.connect(self.analyze_with_ai)
         self.open_settings_button.clicked.connect(self.open_selected_app_settings)
         self.uninstall_button.clicked.connect(self.uninstall_selected)
         self.report_button.clicked.connect(self.export_report)
+        self.csv_button.clicked.connect(self.export_csv)
+        self.copy_diagnostic_button.clicked.connect(self.copy_diagnostic)
+        self.export_diagnostic_button.clicked.connect(self.export_diagnostic)
+        self.history_button.clicked.connect(self.show_scan_history)
+        self.demo_button.clicked.connect(self.load_demo_data)
         self.reload_button.clicked.connect(self.reload_reputation)
         self.search_input.textChanged.connect(self.apply_filters)
         self.hide_safe_checkbox.stateChanged.connect(self.apply_filters)
         self.hidden_apps_checkbox.stateChanged.connect(self.apply_filters)
         self.notification_audit_checkbox.stateChanged.connect(self.apply_filters)
+        self.sideload_checkbox.stateChanged.connect(self.apply_filters)
+        self.score_filter.currentIndexChanged.connect(self.apply_filters)
+        self.permission_filter.currentIndexChanged.connect(self.apply_filters)
         self.table.customContextMenuRequested.connect(self.open_context_menu)
         self.table.itemSelectionChanged.connect(self.update_details_from_selection)
         self.table.cellDoubleClicked.connect(self.open_details_for_cell)
@@ -507,19 +609,28 @@ class MainWindow(QMainWindow):
             self.ai_button.setToolTip("Ajoutez OPENAI_API_KEY dans .env pour activer cette option.")
 
     def set_busy(self, busy: bool, message: str = "") -> None:
+        self.is_busy = busy
         for widget in (
             self.detect_button,
             self.adb_diagnostic_button,
             self.adb_repair_button,
             self.adb_daemon_button,
             self.scan_button,
+            self.demo_button,
             self.open_settings_button,
             self.uninstall_button,
             self.report_button,
+            self.csv_button,
+            self.copy_diagnostic_button,
+            self.export_diagnostic_button,
+            self.history_button,
             self.reload_button,
             self.device_combo,
         ):
             widget.setEnabled(not busy)
+        self.cancel_scan_button.setEnabled(bool(self.scan_worker and self.scan_worker.isRunning()))
+        self.copy_diagnostic_button.setEnabled((not busy) and bool(self.last_diagnostic_text))
+        self.export_diagnostic_button.setEnabled((not busy) and bool(self.last_diagnostic_text))
         self._apply_ai_button_state()
         if busy:
             self.ai_button.setEnabled(False)
@@ -620,6 +731,28 @@ class MainWindow(QMainWindow):
                 self.device_combo.setCurrentIndex(index)
         self.device_combo.blockSignals(False)
 
+    def refresh_devices_if_idle(self) -> None:
+        if self.is_busy or (self.refresh_worker and self.refresh_worker.isRunning()):
+            return
+        worker = DevicesRefreshWorker()
+        worker.succeeded.connect(self.on_devices_refreshed)
+        worker.finished.connect(lambda: setattr(self, "refresh_worker", None))
+        self.refresh_worker = worker
+        worker.start()
+
+    def on_devices_refreshed(self, devices: list[ADBDevice]) -> None:
+        signature = "|".join(f"{device.serial}:{device.state}:{device.details}" for device in devices)
+        if signature == self.last_devices_signature:
+            return
+        previous_signature = self.last_devices_signature
+        self.last_devices_signature = signature
+        self.update_device_combo(devices)
+        ready = [device for device in devices if device.state == "device"]
+        if ready and self.device.state != "device":
+            self.status_label.setText("Téléphone ADB détecté. Cliquez sur Détecter téléphone.")
+        elif previous_signature and not devices:
+            self.status_label.setText("Aucun appareil ADB détecté.")
+
     def show_diagnostic_report(self, report: dict[str, Any]) -> None:
         device: DeviceInfo = report.get("device", DeviceInfo())
         devices: list[ADBDevice] = report.get("devices", [])
@@ -630,6 +763,9 @@ class MainWindow(QMainWindow):
             summary = f"Réparation ADB terminée.\n{summary}"
 
         details = format_diagnostic_report(report)
+        self.last_diagnostic_text = details
+        self.copy_diagnostic_button.setEnabled(True)
+        self.export_diagnostic_button.setEnabled(True)
         message_box = QMessageBox(self)
         message_box.setWindowTitle("Diagnostic ADB")
         message_box.setIcon(QMessageBox.Information)
@@ -637,23 +773,80 @@ class MainWindow(QMainWindow):
         message_box.setDetailedText(details)
         message_box.exec()
 
+    def copy_diagnostic(self) -> None:
+        if not self.last_diagnostic_text:
+            QMessageBox.information(self, "Diagnostic absent", "Lancez d'abord Diagnostic ADB.")
+            return
+        QApplication.clipboard().setText(self.last_diagnostic_text)
+        self.status_label.setText("Diagnostic copié dans le presse-papiers.")
+
+    def export_diagnostic(self) -> None:
+        if not self.last_diagnostic_text:
+            QMessageBox.information(self, "Diagnostic absent", "Lancez d'abord Diagnostic ADB.")
+            return
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        path = REPORTS_DIR / f"diagnostic_adb_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+        path.write_text(self.last_diagnostic_text, encoding="utf-8")
+        QMessageBox.information(self, "Diagnostic exporté", f"Diagnostic créé :\n{path}")
+
     def scan_apps(self) -> None:
         if self.device.state != "device" or not self.device.serial:
             QMessageBox.warning(self, "Téléphone requis", "Détectez d'abord un téléphone autorisé en USB.")
             return
         self.set_busy(True, "Scan des applications en cours...")
+        self.scan_progress.setValue(0)
+        self.progress_label.setText("Préparation du scan...")
         worker = ScanWorker(self.device.serial, self.include_system_checkbox.isChecked(), self.device)
         worker.succeeded.connect(self.on_scan_finished)
+        worker.progress.connect(self.on_scan_progress)
         worker.failed.connect(self.on_worker_failed)
-        worker.finished.connect(lambda: self.set_busy(False))
+        worker.finished.connect(self.on_scan_worker_finished)
+        self.scan_worker = worker
         self.current_worker = worker
+        self.cancel_scan_button.setEnabled(True)
         worker.start()
 
-    def on_scan_finished(self, rows: list[dict[str, Any]]) -> None:
+    def cancel_scan(self) -> None:
+        if self.scan_worker and self.scan_worker.isRunning():
+            self.scan_worker.cancel()
+            self.cancel_scan_button.setEnabled(False)
+            self.progress_label.setText("Annulation demandée...")
+            self.status_label.setText("Annulation du scan...")
+
+    def on_scan_progress(self, current: int, total: int, package: str) -> None:
+        percent = int((current / total) * 100) if total else 0
+        self.scan_progress.setValue(percent)
+        self.progress_label.setText(f"{current}/{total} {package}")
+        self.status_label.setText(f"Scan en cours : {current}/{total}")
+
+    def on_scan_finished(self, payload: dict[str, Any]) -> None:
+        rows: list[dict[str, Any]] = payload.get("rows", [])
+        errors: list[str] = payload.get("errors", [])
+        cancelled = bool(payload.get("cancelled"))
         self.rows = rows
         self.populate_table()
         suspicious = len([r for r in rows if r["risk"].score >= 60 and r["risk"].recommended_action != "do_not_touch"])
-        self.status_label.setText(f"Scan terminé : {len(rows)} apps, {suspicious} suspectes.")
+        self.scan_progress.setValue(100 if rows else 0)
+        if cancelled:
+            self.status_label.setText(f"Scan annulé : {len(rows)} apps traitées, {len(errors)} erreur(s).")
+            self.progress_label.setText("Scan annulé")
+        elif errors:
+            self.status_label.setText(f"Scan partiel : {len(rows)} apps, {suspicious} suspectes, {len(errors)} erreur(s).")
+            self.progress_label.setText(f"Scan partiel : {len(errors)} erreur(s)")
+            QMessageBox.warning(
+                self,
+                "Scan partiel",
+                f"{len(errors)} application(s) n'ont pas livré toutes leurs métadonnées.\n\n"
+                + "\n".join(errors[:20]),
+            )
+        else:
+            self.status_label.setText(f"Scan terminé : {len(rows)} apps, {suspicious} suspectes.")
+            self.progress_label.setText("Scan terminé")
+
+    def on_scan_worker_finished(self) -> None:
+        self.scan_worker = None
+        self.cancel_scan_button.setEnabled(False)
+        self.set_busy(False)
 
     def populate_table(self) -> None:
         self.table.setSortingEnabled(False)
@@ -717,6 +910,9 @@ class MainWindow(QMainWindow):
         hide_safe = self.hide_safe_checkbox.isChecked()
         only_hidden = self.hidden_apps_checkbox.isChecked()
         only_notifications = self.notification_audit_checkbox.isChecked()
+        only_sideload = self.sideload_checkbox.isChecked()
+        min_score = int(self.score_filter.currentData() or 0)
+        permission_query = str(self.permission_filter.currentData() or "")
         for row in range(self.table.rowCount()):
             package_item = self.table.item(row, 5)
             if not package_item:
@@ -738,12 +934,19 @@ class MainWindow(QMainWindow):
             is_safe = row_data["risk"].score < 30 or row_data["risk"].recommended_action == "keep"
             is_hidden = is_hidden_or_low_visibility(row_data["app"])
             has_notification_audit = bool(row_data["app"].notification_audit)
+            is_sideload = not row_data["app"].installer or row_data["app"].installer not in {
+                "com.android.vending",
+                "com.sec.android.app.samsungapps",
+            }
             self.table.setRowHidden(
                 row,
                 bool(query and query not in haystack)
+                or (row_data["risk"].score < min_score)
                 or (hide_safe and is_safe)
                 or (only_hidden and not is_hidden)
-                or (only_notifications and not has_notification_audit),
+                or (only_notifications and not has_notification_audit)
+                or (only_sideload and not is_sideload)
+                or (bool(permission_query) and not permission_matches(row_data["app"], permission_query)),
             )
 
     def analyze_with_ai(self) -> None:
@@ -854,6 +1057,117 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Erreur rapport", f"Export impossible : {exc}")
             return
         QMessageBox.information(self, "Rapport exporté", f"Rapport créé :\n{path}")
+
+    def export_csv(self) -> None:
+        if not self.rows:
+            QMessageBox.information(self, "CSV impossible", "Scannez les applications avant d'exporter un CSV.")
+            return
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        path = REPORTS_DIR / f"apps_android_cleaner_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv"
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(
+                [
+                    "score",
+                    "category",
+                    "recommended_action",
+                    "app_name",
+                    "package",
+                    "installer",
+                    "system",
+                    "launcher_visible",
+                    "permissions",
+                    "risk_reasons",
+                    "metadata_error",
+                ]
+            )
+            for row in self.rows:
+                app: AppInfo = row["app"]
+                risk = row["risk"]
+                writer.writerow(
+                    [
+                        risk.score,
+                        risk.category,
+                        risk.recommended_action,
+                        app.display_name(),
+                        app.package_name,
+                        app.installer or "inconnu",
+                        "oui" if app.is_system_app else "non",
+                        launcher_text(app),
+                        "; ".join(app.sensitive_permissions),
+                        "; ".join(risk.reasons),
+                        app.dumpsys_error,
+                    ]
+                )
+        QMessageBox.information(self, "CSV exporté", f"CSV créé :\n{path}")
+
+    def show_scan_history(self) -> None:
+        scans = self.db.recent_scans(limit=20)
+        if not scans:
+            QMessageBox.information(self, "Historique", "Aucun scan enregistré.")
+            return
+        lines = []
+        for scan in scans:
+            lines.append(
+                f"{scan['date']} - {scan['device_model'] or '-'} Android {scan['android_version'] or '-'} "
+                f"- {scan['scanned_count']} apps - {scan['suspicious_count']} suspectes"
+            )
+        QMessageBox.information(self, "Historique des scans", "\n".join(lines))
+
+    def load_demo_data(self) -> None:
+        self.device = DeviceInfo(
+            serial="DEMO-ANDROID",
+            state="device",
+            manufacturer="Microwest",
+            model="Demo Phone",
+            android_version="14",
+            message="Mode démo chargé",
+        )
+        demo_apps = [
+            AppInfo(
+                package_name="com.fast.cleaner.booster",
+                app_label="Fast Cleaner",
+                installer="inconnu",
+                sensitive_permissions=[
+                    "android.permission.SYSTEM_ALERT_WINDOW",
+                    "android.permission.POST_NOTIFICATIONS",
+                    "android.permission.RECEIVE_BOOT_COMPLETED",
+                ],
+                has_overlay=True,
+                requests_post_notifications=True,
+                runs_at_boot=True,
+                has_launcher_entry=False,
+                hidden_audit=["Aucune icône launcher visible", "Icône non récupérée ou adaptive XML"],
+                notification_audit=["Demande POST_NOTIFICATIONS", "Démarrage automatique"],
+            ),
+            AppInfo(
+                package_name="com.whatsapp",
+                app_label="WhatsApp",
+                installer="com.android.vending",
+                sensitive_permissions=["android.permission.READ_CONTACTS"],
+                has_launcher_entry=True,
+            ),
+            AppInfo(
+                package_name="com.android.fake.update",
+                app_label="System Update",
+                installer="inconnu",
+                sensitive_permissions=["android.permission.BIND_ACCESSIBILITY_SERVICE"],
+                has_accessibility=True,
+                has_launcher_entry=False,
+                hidden_audit=["Aucune icône launcher visible", "Nom très générique"],
+            ),
+        ]
+        self.rows = [
+            {"app": app, "risk": evaluate_app(app, self.db.reputation_for(app.package_name)), "ai": None, "ai_text": ""}
+            for app in demo_apps
+        ]
+        self.rows.sort(key=lambda item: item["risk"].score, reverse=True)
+        self.uninstalled = []
+        self.on_device_detected({"device": self.device, "devices": [ADBDevice("DEMO-ANDROID", "device", "mode:demo")]})
+        self.populate_table()
+        self.scan_progress.setValue(100)
+        self.progress_label.setText("Mode démo")
+        self.status_label.setText("Mode démo chargé : données fictives.")
 
     def reload_reputation(self) -> None:
         self.db = ReputationDatabase()
@@ -969,6 +1283,20 @@ def launcher_text(app: AppInfo) -> str:
 
 def is_hidden_or_low_visibility(app: AppInfo) -> bool:
     return app.has_launcher_entry is False or "Nom très générique" in app.hidden_audit
+
+
+def permission_matches(app: AppInfo, query: str) -> bool:
+    haystack = " ".join(app.sensitive_permissions + app.notification_audit + app.hidden_audit).upper()
+    flags = {
+        "ACCESSIBILITY": app.has_accessibility,
+        "NOTIFICATION": app.has_notification_listener or app.requests_post_notifications,
+        "OVERLAY": app.has_overlay,
+        "DEVICE_ADMIN": app.has_device_admin,
+        "VPN": app.has_vpn_service,
+    }
+    if query in flags:
+        return flags[query] or query in haystack
+    return query in haystack
 
 
 def hidden_summary(app: AppInfo) -> str:

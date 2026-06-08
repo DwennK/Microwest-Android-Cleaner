@@ -140,10 +140,23 @@ class ReputationDatabase:
                 (date, device_model, android_version, scanned_count, suspicious_count),
             )
 
+    def recent_scans(self, limit: int = 20) -> list[sqlite3.Row]:
+        with self.connect() as con:
+            return list(
+                con.execute(
+                    """
+                    SELECT date, device_model, android_version, scanned_count, suspicious_count
+                    FROM scan_history
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                )
+            )
+
     def record_uninstall(self, date: str, package: str, app_label: str, result: str) -> None:
         with self.connect() as con:
             con.execute(
                 "INSERT INTO uninstall_history(date, package, app_label, result) VALUES(?, ?, ?, ?)",
                 (date, package, app_label, result),
             )
-
