@@ -43,6 +43,19 @@ pip install -r requirements.txt
 python main.py
 ```
 
+Scripts portables inclus :
+
+```bash
+./setup_mac.command
+./run_mac.command
+```
+
+Sur Windows :
+
+```bat
+run_windows.bat
+```
+
 ## Installer ADB
 
 Option 1 : placer le binaire ADB compatible avec votre système dans :
@@ -124,6 +137,10 @@ Le bouton `Réparer connexion` relance ADB, attend brièvement, relit `adb devic
 
 Si plusieurs téléphones sont connectés, la liste `Appareil` permet de choisir explicitement le numéro ADB à scanner. En mode `Auto`, l'application choisit le premier appareil autorisé (`device`) retourné par ADB.
 
+L'application rafraîchit aussi périodiquement la liste ADB quand elle est inactive. Le rafraîchissement ne lance aucun scan automatiquement.
+
+Les boutons `Copier diagnostic` et `Exporter diagnostic` permettent de transmettre le dernier rapport ADB sans ouvrir les fichiers de logs.
+
 ## Mode portable
 
 L'application reste portable : les fichiers runtime restent dans le dossier de l'application.
@@ -144,12 +161,13 @@ Le diagnostic vérifie que ces dossiers sont créables et accessibles en écritu
 1. Cliquer sur `Détecter téléphone`.
 2. Vérifier le modèle, la version Android et le numéro ADB.
 3. Cliquer sur `Scanner les apps`.
-4. Examiner les scores et les raisons.
-5. Sélectionner une app pour voir ses détails dans le panneau latéral droit.
-6. Cocher uniquement les applications validées manuellement.
-7. Cliquer sur `Désinstaller sélection`.
-8. Confirmer la liste affichée.
-9. Exporter un rapport client avec `Exporter rapport`.
+4. Suivre la barre de progression. Le bouton `Annuler scan` arrête proprement le scan en cours.
+5. Examiner les scores et les raisons.
+6. Sélectionner une app pour voir ses détails dans le panneau latéral droit.
+7. Cocher uniquement les applications validées manuellement.
+8. Cliquer sur `Désinstaller sélection`.
+9. Confirmer la liste affichée.
+10. Exporter un rapport client avec `Exporter rapport`, ou une table brute avec `Exporter CSV`.
 
 Par défaut, seules les applications utilisateur sont scannées. La case `Afficher apps système` permet de les afficher aussi, mais les applications système Samsung/Google/Microsoft connues sont marquées `do_not_touch`.
 
@@ -160,6 +178,14 @@ adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:P
 ```
 
 Les filtres `Apps cachées` et `Audit notifications` permettent d'isoler rapidement les apps peu visibles ou capables de générer du spam de notifications. L'application ne lit pas le contenu des notifications.
+
+Filtres supplémentaires :
+
+- `Sideload` pour isoler les apps sans installateur connu ou hors Google Play/Galaxy Store ;
+- `Score min` pour afficher uniquement les apps au-dessus d'un seuil ;
+- `Toutes permissions` pour filtrer par famille de permissions sensibles.
+
+Le bouton `Mode démo` charge un faux téléphone et des apps fictives pour tester l'interface sans Android branché. Le bouton `Historique` affiche les derniers scans enregistrés dans la base SQLite portable.
 
 ## Détection des apps suspectes
 
