@@ -86,6 +86,15 @@ class ReputationDatabase:
                 )
                 """
             )
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app_notes(
+                    package TEXT PRIMARY KEY,
+                    note TEXT,
+                    updated_at TEXT
+                )
+                """
+            )
             con.executemany(
                 "INSERT OR IGNORE INTO whitelist(package, label, reason) VALUES(?, ?, ?)",
                 DEFAULT_WHITELIST,
@@ -160,3 +169,18 @@ class ReputationDatabase:
                 "INSERT INTO uninstall_history(date, package, app_label, result) VALUES(?, ?, ?, ?)",
                 (date, package, app_label, result),
             )
+
+    def note_for(self, package: str) -> str:
+        with self.connect() as con:
+            row = con.execute("SELECT note FROM app_notes WHERE package = ?", (package,)).fetchone()
+            return str(row["note"]) if row and row["note"] else ""
+
+    def set_note(self, package: str, note: str, updated_at: str) -> None:
+        with self.connect() as con:
+            if note.strip():
+                con.execute(
+                    "INSERT OR REPLACE INTO app_notes(package, note, updated_at) VALUES(?, ?, ?)",
+                    (package, note.strip(), updated_at),
+                )
+            else:
+                con.execute("DELETE FROM app_notes WHERE package = ?", (package,))

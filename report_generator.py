@@ -81,7 +81,7 @@ def table_for_rows(rows: list[dict[str, Any]]) -> str:
         return "<p class=\"muted\">Aucune.</p>"
     lines = [
         "<table>",
-        "<tr><th>Score</th><th>Catégorie</th><th>Action</th><th>Nom</th><th>Package</th><th>Visibilité</th><th>Notifications</th><th>Raisons</th><th>IA</th></tr>",
+        "<tr><th>Priorité</th><th>Score</th><th>Catégorie</th><th>Action</th><th>Nom</th><th>Package</th><th>Visibilité</th><th>Notifications</th><th>Raisons</th><th>Note</th><th>IA</th></tr>",
     ]
     for row in rows:
         app = row["app"]
@@ -90,6 +90,7 @@ def table_for_rows(rows: list[dict[str, Any]]) -> str:
         css = "risk-high" if risk.score >= 60 else "risk-medium" if risk.score >= 30 else "risk-low"
         lines.append(
             "<tr>"
+            f"<td>{html.escape(report_priority(row))}</td>"
             f"<td class=\"{css}\">{risk.score}</td>"
             f"<td>{html.escape(risk.category)}</td>"
             f"<td>{html.escape(risk.recommended_action)}</td>"
@@ -98,6 +99,7 @@ def table_for_rows(rows: list[dict[str, Any]]) -> str:
             f"<td>{html.escape(report_hidden_summary(app))}</td>"
             f"<td>{html.escape(', '.join(app.notification_audit) or '-')}</td>"
             f"<td>{html.escape('; '.join(risk.reasons))}</td>"
+            f"<td>{html.escape(row.get('note', ''))}</td>"
             f"<td>{html.escape(ai_text)}</td>"
             "</tr>"
         )
@@ -112,6 +114,20 @@ def report_hidden_summary(app: Any) -> str:
     if hidden_audit:
         return ", ".join(hidden_audit)
     return "-"
+
+
+def report_priority(row: dict[str, Any]) -> str:
+    app = row["app"]
+    risk = row["risk"]
+    if risk.recommended_action == "do_not_touch" or getattr(app, "is_system_app", False):
+        return "Protégée"
+    if risk.score >= 80:
+        return "Urgent"
+    if risk.score >= 60:
+        return "À traiter"
+    if risk.recommended_action == "review" or risk.score >= 30:
+        return "À vérifier"
+    return "OK"
 
 
 def table_for_uninstalls(uninstalled: list[dict[str, str]]) -> str:

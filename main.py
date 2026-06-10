@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import platform
 import csv
+import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -232,7 +234,7 @@ class ScanWorker(QThread):
                     app.dumpsys_error = str(exc)
                     errors.append(f"{package}: {exc}")
                 risk = evaluate_app(app, db.reputation_for(app.package_name))
-                rows.append({"app": app, "risk": risk, "ai": None, "ai_text": ""})
+                rows.append({"app": app, "risk": risk, "ai": None, "ai_text": "", "note": db.note_for(app.package_name)})
             rows.sort(key=lambda item: item["risk"].score, reverse=True)
             suspicious_count = len([r for r in rows if r["risk"].score >= 60 and r["risk"].recommended_action != "do_not_touch"])
             if rows:
@@ -354,12 +356,14 @@ def build_app_details_text(row: dict[str, Any]) -> str:
         + f"\n\nCommande ADB prévue :\n{command}\n\n"
         f"Commande paramètres app :\n{settings_command}\n\n"
         f"Analyse IA :\n{row.get('ai_text') or 'Non effectuée'}"
+        + f"\n\nNote technicien :\n{row.get('note') or 'Aucune'}"
     )
 
 
 class MainWindow(QMainWindow):
     COLUMNS = [
         "",
+        "Priorité",
         "Score",
         "Catégorie",
         "Action",
@@ -368,9 +372,16 @@ class MainWindow(QMainWindow):
         "Installer",
         "Cachée",
         "Notifications",
+        "Note",
         "Raisons",
         "IA",
     ]
+    COL_CHECK = 0
+    COL_PRIORITY = 1
+    COL_SCORE = 2
+    COL_PACKAGE = 6
+    COL_NOTE = 10
+    COL_REASONS = 11
 
     def __init__(self) -> None:
         super().__init__()
@@ -444,6 +455,9 @@ class MainWindow(QMainWindow):
         self.export_diagnostic_button = QPushButton("Exporter diagnostic")
         self.history_button = QPushButton("Historique")
         self.demo_button = QPushButton("Mode démo")
+        self.action_plan_button = QPushButton("Plan action")
+        self.copy_plan_button = QPushButton("Copier plan")
+        self.open_reports_button = QPushButton("Ouvrir rapports")
         self.reload_button = QPushButton("Recharger blacklist/whitelist")
         for button in (
             self.detect_button,
@@ -468,6 +482,9 @@ class MainWindow(QMainWindow):
             self.export_diagnostic_button,
             self.history_button,
             self.demo_button,
+            self.action_plan_button,
+            self.copy_plan_button,
+            self.open_reports_button,
             self.reload_button,
         ):
             export_toolbar.addWidget(button)
@@ -487,6 +504,25 @@ class MainWindow(QMainWindow):
         progress_layout.addWidget(self.scan_progress, 1)
         progress_layout.addWidget(self.progress_label)
         main_layout.addLayout(progress_layout)
+
+        summary_layout = QHBoxLayout()
+        self.summary_total_label = QLabel("Apps: 0")
+        self.summary_high_label = QLabel("À traiter: 0")
+        self.summary_review_label = QLabel("À vérifier: 0")
+        self.summary_hidden_label = QLabel("Cachées: 0")
+        self.summary_sideload_label = QLabel("Sideload: 0")
+        self.summary_selected_label = QLabel("Cochées: 0")
+        for label in (
+            self.summary_total_label,
+            self.summary_high_label,
+            self.summary_review_label,
+            self.summary_hidden_label,
+            self.summary_sideload_label,
+            self.summary_selected_label,
+        ):
+            summary_layout.addWidget(label)
+        summary_layout.addStretch(1)
+        main_layout.addLayout(summary_layout)
 
         filters = QHBoxLayout()
         self.include_system_checkbox = QCheckBox("Afficher apps système")
@@ -514,6 +550,16 @@ class MainWindow(QMainWindow):
         filters.addWidget(self.search_input, 1)
         main_layout.addLayout(filters)
 
+        selection_toolbar = QHBoxLayout()
+        self.select_high_button = QPushButton("Cocher à traiter")
+        self.select_review_button = QPushButton("Cocher review")
+        self.clear_checks_button = QPushButton("Tout décocher")
+        self.note_button = QPushButton("Note sélection")
+        for button in (self.select_high_button, self.select_review_button, self.clear_checks_button, self.note_button):
+            selection_toolbar.addWidget(button)
+        selection_toolbar.addStretch(1)
+        main_layout.addLayout(selection_toolbar)
+
         self.table = QTableWidget(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setSortingEnabled(True)
@@ -524,17 +570,19 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setVisible(False)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
-        header.setSectionResizeMode(9, QHeaderView.Stretch)
+        header.setSectionResizeMode(self.COL_REASONS, QHeaderView.Stretch)
         self.table.setColumnWidth(0, 42)
-        self.table.setColumnWidth(1, 70)
-        self.table.setColumnWidth(2, 170)
-        self.table.setColumnWidth(3, 150)
-        self.table.setColumnWidth(4, 180)
-        self.table.setColumnWidth(5, 280)
-        self.table.setColumnWidth(6, 220)
-        self.table.setColumnWidth(7, 120)
-        self.table.setColumnWidth(8, 160)
-        self.table.setColumnWidth(10, 220)
+        self.table.setColumnWidth(self.COL_PRIORITY, 110)
+        self.table.setColumnWidth(self.COL_SCORE, 70)
+        self.table.setColumnWidth(3, 170)
+        self.table.setColumnWidth(4, 150)
+        self.table.setColumnWidth(5, 180)
+        self.table.setColumnWidth(self.COL_PACKAGE, 280)
+        self.table.setColumnWidth(7, 220)
+        self.table.setColumnWidth(8, 120)
+        self.table.setColumnWidth(9, 160)
+        self.table.setColumnWidth(self.COL_NOTE, 180)
+        self.table.setColumnWidth(12, 220)
 
         self.details_text = QTextEdit()
         self.details_text.setReadOnly(True)
@@ -570,7 +618,14 @@ class MainWindow(QMainWindow):
         self.export_diagnostic_button.clicked.connect(self.export_diagnostic)
         self.history_button.clicked.connect(self.show_scan_history)
         self.demo_button.clicked.connect(self.load_demo_data)
+        self.action_plan_button.clicked.connect(self.export_action_plan)
+        self.copy_plan_button.clicked.connect(self.copy_action_plan)
+        self.open_reports_button.clicked.connect(self.open_reports_folder)
         self.reload_button.clicked.connect(self.reload_reputation)
+        self.select_high_button.clicked.connect(lambda: self.check_rows("high"))
+        self.select_review_button.clicked.connect(lambda: self.check_rows("review"))
+        self.clear_checks_button.clicked.connect(lambda: self.check_rows("clear"))
+        self.note_button.clicked.connect(self.edit_note_for_selected)
         self.search_input.textChanged.connect(self.apply_filters)
         self.hide_safe_checkbox.stateChanged.connect(self.apply_filters)
         self.hidden_apps_checkbox.stateChanged.connect(self.apply_filters)
@@ -580,6 +635,7 @@ class MainWindow(QMainWindow):
         self.permission_filter.currentIndexChanged.connect(self.apply_filters)
         self.table.customContextMenuRequested.connect(self.open_context_menu)
         self.table.itemSelectionChanged.connect(self.update_details_from_selection)
+        self.table.itemChanged.connect(self.on_table_item_changed)
         self.table.cellDoubleClicked.connect(self.open_details_for_cell)
 
         self.setStyleSheet(
@@ -625,6 +681,13 @@ class MainWindow(QMainWindow):
             self.export_diagnostic_button,
             self.history_button,
             self.reload_button,
+            self.action_plan_button,
+            self.copy_plan_button,
+            self.open_reports_button,
+            self.select_high_button,
+            self.select_review_button,
+            self.clear_checks_button,
+            self.note_button,
             self.device_combo,
         ):
             widget.setEnabled(not busy)
@@ -850,25 +913,29 @@ class MainWindow(QMainWindow):
 
     def populate_table(self) -> None:
         self.table.setSortingEnabled(False)
+        self.table.blockSignals(True)
         self.table.setRowCount(0)
         for row_data in self.rows:
             row = self.table.rowCount()
             self.table.insertRow(row)
             self._set_row_items(row, row_data)
+        self.table.blockSignals(False)
         self.table.setSortingEnabled(True)
-        self.table.sortItems(1, Qt.DescendingOrder)
+        self.table.sortItems(self.COL_SCORE, Qt.DescendingOrder)
         self.apply_filters()
         if self.table.rowCount() > 0:
             self.table.selectRow(0)
             self.update_details_from_selection()
         else:
             self.details_text.clear()
+        self.update_summary()
 
     def _set_row_items(self, row: int, row_data: dict[str, Any]) -> None:
         app: AppInfo = row_data["app"]
         risk = row_data["risk"]
         values = [
             "",
+            priority_text(row_data),
             str(risk.score),
             risk.category,
             risk.recommended_action,
@@ -877,6 +944,7 @@ class MainWindow(QMainWindow):
             app.installer or "inconnu",
             hidden_summary(app),
             notification_summary(app),
+            row_data.get("note", ""),
             "; ".join(risk.reasons),
             row_data.get("ai_text", ""),
         ]
@@ -884,13 +952,13 @@ class MainWindow(QMainWindow):
         for col, value in enumerate(values):
             item = QTableWidgetItem(value)
             item.setData(Qt.UserRole, app.package_name)
-            if col == 0:
+            if col == self.COL_CHECK:
                 item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable)
                 item.setCheckState(Qt.Unchecked)
                 item.setText("")
                 if app.icon_path and Path(app.icon_path).exists():
                     item.setIcon(QIcon(app.icon_path))
-            elif col == 1:
+            elif col == self.COL_SCORE:
                 item.setData(Qt.DisplayRole, risk.score)
             item.setBackground(color)
             self.table.setItem(row, col, item)
@@ -914,7 +982,7 @@ class MainWindow(QMainWindow):
         min_score = int(self.score_filter.currentData() or 0)
         permission_query = str(self.permission_filter.currentData() or "")
         for row in range(self.table.rowCount()):
-            package_item = self.table.item(row, 5)
+            package_item = self.table.item(row, self.COL_PACKAGE)
             if not package_item:
                 continue
             package = package_item.text()
@@ -934,10 +1002,7 @@ class MainWindow(QMainWindow):
             is_safe = row_data["risk"].score < 30 or row_data["risk"].recommended_action == "keep"
             is_hidden = is_hidden_or_low_visibility(row_data["app"])
             has_notification_audit = bool(row_data["app"].notification_audit)
-            is_sideload = not row_data["app"].installer or row_data["app"].installer not in {
-                "com.android.vending",
-                "com.sec.android.app.samsungapps",
-            }
+            is_sideload = is_sideloaded(row_data["app"])
             self.table.setRowHidden(
                 row,
                 bool(query and query not in haystack)
@@ -948,6 +1013,56 @@ class MainWindow(QMainWindow):
                 or (only_sideload and not is_sideload)
                 or (bool(permission_query) and not permission_matches(row_data["app"], permission_query)),
             )
+        self.update_summary()
+
+    def on_table_item_changed(self, item: QTableWidgetItem) -> None:
+        if item.column() == self.COL_CHECK:
+            self.update_summary()
+
+    def update_summary(self) -> None:
+        summary = scan_summary(self.rows)
+        checked = len(self.selected_rows())
+        visible = len([row for row in range(self.table.rowCount()) if not self.table.isRowHidden(row)])
+        self.summary_total_label.setText(f"Apps: {summary['total']} ({visible} visibles)")
+        self.summary_high_label.setText(f"À traiter: {summary['high']}")
+        self.summary_review_label.setText(f"À vérifier: {summary['review']}")
+        self.summary_hidden_label.setText(f"Cachées: {summary['hidden']}")
+        self.summary_sideload_label.setText(f"Sideload: {summary['sideload']}")
+        self.summary_selected_label.setText(f"Cochées: {checked}")
+
+    def check_rows(self, mode: str) -> None:
+        self.table.blockSignals(True)
+        try:
+            for row in range(self.table.rowCount()):
+                item = self.table.item(row, self.COL_CHECK)
+                package_item = self.table.item(row, self.COL_PACKAGE)
+                if not item or not package_item:
+                    continue
+                row_data = self.row_by_package(package_item.text())
+                if not row_data:
+                    continue
+                should_check = False
+                if mode == "high":
+                    should_check = (
+                        row_data["risk"].score >= 60
+                        and row_data["risk"].recommended_action != "do_not_touch"
+                        and not row_data["app"].is_system_app
+                    )
+                elif mode == "review":
+                    should_check = row_data["risk"].recommended_action == "review" and not row_data["app"].is_system_app
+                elif mode == "clear":
+                    should_check = False
+                item.setCheckState(Qt.Checked if should_check else Qt.Unchecked)
+        finally:
+            self.table.blockSignals(False)
+        self.update_summary()
+
+    def edit_note_for_selected(self) -> None:
+        row_data = self.current_or_checked_row()
+        if not row_data:
+            QMessageBox.information(self, "Application requise", "Sélectionnez une application pour ajouter une note.")
+            return
+        self.edit_note(row_data)
 
     def analyze_with_ai(self) -> None:
         if not self.rows:
@@ -1069,6 +1184,7 @@ class MainWindow(QMainWindow):
             writer.writerow(
                 [
                     "score",
+                    "priority",
                     "category",
                     "recommended_action",
                     "app_name",
@@ -1078,6 +1194,7 @@ class MainWindow(QMainWindow):
                     "launcher_visible",
                     "permissions",
                     "risk_reasons",
+                    "technician_note",
                     "metadata_error",
                 ]
             )
@@ -1087,6 +1204,7 @@ class MainWindow(QMainWindow):
                 writer.writerow(
                     [
                         risk.score,
+                        priority_text(row),
                         risk.category,
                         risk.recommended_action,
                         app.display_name(),
@@ -1096,10 +1214,39 @@ class MainWindow(QMainWindow):
                         launcher_text(app),
                         "; ".join(app.sensitive_permissions),
                         "; ".join(risk.reasons),
+                        row.get("note", ""),
                         app.dumpsys_error,
                     ]
                 )
         QMessageBox.information(self, "CSV exporté", f"CSV créé :\n{path}")
+
+    def export_action_plan(self) -> None:
+        if not self.rows:
+            QMessageBox.information(self, "Plan impossible", "Scannez les applications avant d'exporter un plan.")
+            return
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        path = REPORTS_DIR / f"plan_action_android_cleaner_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
+        path.write_text(build_action_plan(self.device, self.rows, self.selected_rows()), encoding="utf-8")
+        QMessageBox.information(self, "Plan action exporté", f"Plan créé :\n{path}")
+
+    def copy_action_plan(self) -> None:
+        if not self.rows:
+            QMessageBox.information(self, "Plan impossible", "Scannez les applications avant de copier un plan.")
+            return
+        QApplication.clipboard().setText(build_action_plan(self.device, self.rows, self.selected_rows()))
+        self.status_label.setText("Plan d'action copié dans le presse-papiers.")
+
+    def open_reports_folder(self) -> None:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            if sys.platform == "win32":
+                os.startfile(REPORTS_DIR)  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.run(["open", str(REPORTS_DIR)], check=False)
+            else:
+                subprocess.run(["xdg-open", str(REPORTS_DIR)], check=False)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Dossier rapports", f"Ouverture impossible : {exc}")
 
     def show_scan_history(self) -> None:
         scans = self.db.recent_scans(limit=20)
@@ -1158,7 +1305,13 @@ class MainWindow(QMainWindow):
             ),
         ]
         self.rows = [
-            {"app": app, "risk": evaluate_app(app, self.db.reputation_for(app.package_name)), "ai": None, "ai_text": ""}
+            {
+                "app": app,
+                "risk": evaluate_app(app, self.db.reputation_for(app.package_name)),
+                "ai": None,
+                "ai_text": "",
+                "note": "Exemple de triage" if app.package_name == "com.fast.cleaner.booster" else "",
+            }
             for app in demo_apps
         ]
         self.rows.sort(key=lambda item: item["risk"].score, reverse=True)
@@ -1180,7 +1333,7 @@ class MainWindow(QMainWindow):
         item = self.table.itemAt(position)
         if not item:
             return
-        package = self.table.item(item.row(), 5).text()
+        package = self.table.item(item.row(), self.COL_PACKAGE).text()
         row_data = self.row_by_package(package)
         if not row_data:
             return
@@ -1188,17 +1341,20 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         whitelist = QAction("Ajouter à la whitelist", self)
         blacklist = QAction("Ajouter à la blacklist", self)
+        note = QAction("Note technicien", self)
         open_settings = QAction("Ouvrir paramètres app sur téléphone", self)
         copy_package = QAction("Copier package", self)
         details = QAction("Voir détails", self)
         menu.addAction(whitelist)
         menu.addAction(blacklist)
+        menu.addAction(note)
         menu.addSeparator()
         menu.addAction(open_settings)
         menu.addAction(copy_package)
         menu.addAction(details)
         whitelist.triggered.connect(lambda: self.add_reputation(row_data, whitelist=True))
         blacklist.triggered.connect(lambda: self.add_reputation(row_data, whitelist=False))
+        note.triggered.connect(lambda: self.edit_note(row_data))
         open_settings.triggered.connect(lambda: self.open_app_settings(row_data))
         copy_package.triggered.connect(lambda: QApplication.clipboard().setText(package))
         details.triggered.connect(lambda: self.open_details(row_data))
@@ -1216,8 +1372,23 @@ class MainWindow(QMainWindow):
             self.db.add_to_blacklist(app.package_name, app.display_name(), reason, severity=80)
         self.reload_reputation()
 
+    def edit_note(self, row_data: dict[str, Any]) -> None:
+        app = row_data["app"]
+        note, ok = QInputDialog.getMultiLineText(
+            self,
+            "Note technicien",
+            f"Note locale pour {app.display_name()} ({app.package_name}) :",
+            row_data.get("note", ""),
+        )
+        if not ok:
+            return
+        self.db.set_note(app.package_name, note, datetime.now().isoformat(timespec="seconds"))
+        row_data["note"] = note.strip()
+        self.populate_table()
+        self.status_label.setText(f"Note mise à jour : {app.package_name}")
+
     def open_details_for_cell(self, row: int, _column: int) -> None:
-        package_item = self.table.item(row, 5)
+        package_item = self.table.item(row, self.COL_PACKAGE)
         if not package_item:
             return
         row_data = self.row_by_package(package_item.text())
@@ -1233,7 +1404,7 @@ class MainWindow(QMainWindow):
         current_items = self.table.selectedItems()
         if not current_items:
             return
-        package_item = self.table.item(current_items[0].row(), 5)
+        package_item = self.table.item(current_items[0].row(), self.COL_PACKAGE)
         if not package_item:
             return
         row_data = self.row_by_package(package_item.text())
@@ -1246,9 +1417,12 @@ class MainWindow(QMainWindow):
     def selected_rows(self) -> list[dict[str, Any]]:
         selected: list[dict[str, Any]] = []
         for row in range(self.table.rowCount()):
-            item = self.table.item(row, 0)
+            item = self.table.item(row, self.COL_CHECK)
             if item and item.checkState() == Qt.Checked:
-                package = self.table.item(row, 5).text()
+                package_item = self.table.item(row, self.COL_PACKAGE)
+                if not package_item:
+                    continue
+                package = package_item.text()
                 row_data = self.row_by_package(package)
                 if row_data:
                     selected.append(row_data)
@@ -1257,7 +1431,7 @@ class MainWindow(QMainWindow):
     def current_or_checked_row(self) -> dict[str, Any] | None:
         current_items = self.table.selectedItems()
         if current_items:
-            package_item = self.table.item(current_items[0].row(), 5)
+            package_item = self.table.item(current_items[0].row(), self.COL_PACKAGE)
             if package_item:
                 row_data = self.row_by_package(package_item.text())
                 if row_data:
@@ -1283,6 +1457,101 @@ def launcher_text(app: AppInfo) -> str:
 
 def is_hidden_or_low_visibility(app: AppInfo) -> bool:
     return app.has_launcher_entry is False or "Nom très générique" in app.hidden_audit
+
+
+def is_sideloaded(app: AppInfo) -> bool:
+    return not app.installer or app.installer not in {"com.android.vending", "com.sec.android.app.samsungapps"}
+
+
+def priority_text(row: dict[str, Any]) -> str:
+    app: AppInfo = row["app"]
+    risk = row["risk"]
+    if risk.recommended_action == "do_not_touch" or app.is_system_app:
+        return "Protégée"
+    if risk.score >= 80:
+        return "Urgent"
+    if risk.score >= 60:
+        return "À traiter"
+    if risk.recommended_action == "review" or risk.score >= 30:
+        return "À vérifier"
+    return "OK"
+
+
+def scan_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        "total": len(rows),
+        "high": len(
+            [
+                row
+                for row in rows
+                if row["risk"].score >= 60
+                and row["risk"].recommended_action != "do_not_touch"
+                and not row["app"].is_system_app
+            ]
+        ),
+        "review": len([row for row in rows if row["risk"].recommended_action == "review"]),
+        "hidden": len([row for row in rows if is_hidden_or_low_visibility(row["app"])]),
+        "sideload": len([row for row in rows if is_sideloaded(row["app"])]),
+    }
+
+
+def build_action_plan(device: DeviceInfo, rows: list[dict[str, Any]], selected_rows: list[dict[str, Any]] | None = None) -> str:
+    selected_rows = selected_rows or []
+    candidates = selected_rows or [
+        row
+        for row in rows
+        if row["risk"].score >= 60 and row["risk"].recommended_action != "do_not_touch" and not row["app"].is_system_app
+    ]
+    review_rows = [row for row in rows if row["risk"].recommended_action == "review" and row not in candidates]
+    summary = scan_summary(rows)
+    lines = [
+        "Microwest Android Cleaner - Plan d'action",
+        f"Date : {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+        f"Téléphone : {device.manufacturer} {device.model}".strip(),
+        f"Android : {device.android_version or '-'}",
+        f"ADB : {device.serial or '-'}",
+        "",
+        "Synthèse",
+        f"- Apps scannées : {summary['total']}",
+        f"- À traiter : {summary['high']}",
+        f"- À vérifier : {summary['review']}",
+        f"- Apps cachées/faible visibilité : {summary['hidden']}",
+        f"- Sideload/installateur inconnu : {summary['sideload']}",
+        "",
+        "Applications proposées pour validation humaine",
+    ]
+    if not candidates:
+        lines.append("- Aucune application à traiter automatiquement sélectionnée.")
+    for row in candidates:
+        app: AppInfo = row["app"]
+        risk = row["risk"]
+        lines.extend(
+            [
+                f"- {app.display_name()} ({app.package_name})",
+                f"  Score : {risk.score} - {risk.category}",
+                f"  Raisons : {'; '.join(risk.reasons[:4])}",
+                f"  Commande après validation : adb shell pm uninstall --user 0 {app.package_name}",
+            ]
+        )
+        if row.get("note"):
+            lines.append(f"  Note : {row['note']}")
+    lines.extend(["", "Applications à vérifier manuellement"])
+    if not review_rows:
+        lines.append("- Aucune.")
+    for row in review_rows[:20]:
+        app = row["app"]
+        risk = row["risk"]
+        lines.append(f"- {app.display_name()} ({app.package_name}) - score {risk.score} - {'; '.join(risk.reasons[:3])}")
+    lines.extend(
+        [
+            "",
+            "Rappel sécurité",
+            "- Ne pas désinstaller sans validation humaine.",
+            "- Ne pas utiliser adb root, su, rm ou commandes destructrices.",
+            "- Vérifier l'écran du téléphone si ADB passe en unauthorized/offline.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def permission_matches(app: AppInfo, query: str) -> bool:
