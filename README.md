@@ -185,6 +185,20 @@ Filtres supplémentaires :
 - `Score min` pour afficher uniquement les apps au-dessus d'un seuil ;
 - `Toutes permissions` pour filtrer par famille de permissions sensibles.
 
+La synthèse au-dessus du tableau affiche le nombre total d'apps, les apps à traiter, les apps à vérifier, les apps cachées, les apps sideload et les lignes cochées.
+
+Boutons de triage :
+
+- `Cocher à traiter` coche les apps utilisateur à score élevé proposées pour validation humaine ;
+- `Cocher review` coche les apps à vérifier manuellement ;
+- `Tout décocher` remet la sélection à zéro ;
+- `Note sélection` ajoute une note locale persistante au package sélectionné ;
+- clic droit sur une ligne puis `Note technicien` permet aussi de gérer la note.
+
+Les notes technicien sont conservées dans la base SQLite portable et apparaissent dans les détails, le CSV et le rapport HTML.
+
+Le bouton `Plan action` exporte un fichier texte dans `reports/` avec les apps à valider, les raisons principales et les commandes ADB exactes à n'utiliser qu'après validation humaine. `Copier plan` place le même plan dans le presse-papiers. `Ouvrir rapports` ouvre le dossier portable `reports/`.
+
 Le bouton `Mode démo` charge un faux téléphone et des apps fictives pour tester l'interface sans Android branché. Le bouton `Historique` affiche les derniers scans enregistrés dans la base SQLite portable.
 
 ## Détection des apps suspectes
