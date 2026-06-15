@@ -422,7 +422,8 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Microwest Android Cleaner")
-        self.resize(1320, 780)
+        self.resize(1440, 860)
+        self.setMinimumSize(1120, 720)
         self.db = ReputationDatabase()
         self.ui_settings = load_ui_settings()
         self.ai_analyzer = AIAnalyzer(self.ui_settings)
@@ -494,6 +495,9 @@ class MainWindow(QMainWindow):
         self.save_settings_button = QPushButton("Enregistrer paramètres")
         self.open_data_button = QPushButton("Ouvrir dossier data")
         self.open_logs_button = QPushButton("Ouvrir logs")
+        for button in (self.detect_button, self.scan_button, self.save_settings_button):
+            button.setObjectName("PrimaryButton")
+        self.uninstall_button.setObjectName("DangerButton")
 
         self.cancel_scan_button.setEnabled(False)
         self.copy_diagnostic_button.setEnabled(False)
@@ -501,6 +505,7 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
+        self.tabs.setObjectName("WorkspaceTabs")
         main_layout.addWidget(self.tabs, 1)
 
         connection_tab = QWidget()
@@ -654,7 +659,6 @@ class MainWindow(QMainWindow):
             self.note_button,
             self.open_settings_button,
             self.uninstall_button,
-            self.reload_button,
         ):
             selection_toolbar.addWidget(button)
         selection_toolbar.addStretch(1)
@@ -669,16 +673,16 @@ class MainWindow(QMainWindow):
         self.table.setIconSize(QSize(28, 28))
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(34)
+        self.table.verticalHeader().setDefaultSectionSize(32)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
         header.setSectionResizeMode(self.COL_PACKAGE, QHeaderView.Stretch)
-        self.table.setColumnWidth(0, 42)
-        self.table.setColumnWidth(self.COL_PRIORITY, 110)
-        self.table.setColumnWidth(self.COL_SCORE, 70)
+        self.table.setColumnWidth(0, 36)
+        self.table.setColumnWidth(self.COL_PRIORITY, 96)
+        self.table.setColumnWidth(self.COL_SCORE, 62)
         self.table.setColumnWidth(3, 150)
-        self.table.setColumnWidth(4, 145)
-        self.table.setColumnWidth(5, 210)
+        self.table.setColumnWidth(4, 132)
+        self.table.setColumnWidth(5, 220)
         self.table.setColumnWidth(self.COL_PACKAGE, 360)
         self.table.setColumnWidth(7, 220)
         self.table.setColumnWidth(8, 120)
@@ -694,9 +698,9 @@ class MainWindow(QMainWindow):
         details_layout = QVBoxLayout(details_tab)
         details_layout.setContentsMargins(12, 12, 12, 12)
         details_layout.setSpacing(10)
-        details_header = QLabel("Détails sélection")
-        details_header.setObjectName("SectionTitle")
-        details_layout.addWidget(details_header)
+        self.details_title_label = QLabel("Détails sélection")
+        self.details_title_label.setObjectName("SectionTitle")
+        details_layout.addWidget(self.details_title_label)
         self.details_text = QTextEdit()
         self.details_text.setReadOnly(True)
         self.details_text.setPlaceholderText("Sélectionnez une application dans Résultats pour afficher ses détails.")
@@ -763,6 +767,8 @@ class MainWindow(QMainWindow):
             minimax_base_url_label,
             self.minimax_base_url_input,
         ]
+        ai_layout.setColumnMinimumWidth(0, 160)
+        ai_layout.setColumnStretch(1, 1)
         ai_layout.addWidget(QLabel("Provider"), 0, 0)
         ai_layout.addWidget(self.ai_provider_combo, 0, 1)
         ai_layout.addWidget(self.ai_key_status_label, 0, 2)
@@ -787,10 +793,11 @@ class MainWindow(QMainWindow):
         storage_layout = QGridLayout(storage_box)
         storage_layout.addWidget(self.open_data_button, 0, 0)
         storage_layout.addWidget(self.open_logs_button, 0, 1)
+        storage_layout.addWidget(self.reload_button, 1, 0, 1, 2)
         storage_note = QLabel("Paramètres, base locale, logs, cache et rapports restent dans le dossier de l'application.")
         storage_note.setWordWrap(True)
         storage_note.setObjectName("Muted")
-        storage_layout.addWidget(storage_note, 1, 0, 1, 2)
+        storage_layout.addWidget(storage_note, 2, 0, 1, 2)
         settings_layout.addWidget(storage_box)
         settings_layout.addStretch(1)
 
@@ -846,27 +853,33 @@ class MainWindow(QMainWindow):
 
         self.setStyleSheet(
             """
-            QMainWindow { background: #f5f7fa; }
-            QLabel#Title { font-size: 26px; font-weight: 700; color: #172033; }
-            QLabel#Subtitle { font-size: 14px; color: #5f6b7a; }
-            QLabel#StatusPill { color: #2d3748; background: #e9eef5; border: 1px solid #d8dee8; border-radius: 6px; padding: 7px 10px; }
+            QMainWindow { background: #f4f6f8; }
+            QLabel#Title { font-size: 24px; font-weight: 700; color: #111827; }
+            QLabel#Subtitle { font-size: 13px; color: #64748b; }
+            QLabel#StatusPill { color: #334155; background: #e8eef5; border: 1px solid #ccd6e3; border-radius: 6px; padding: 7px 10px; }
             QLabel#Muted { color: #5f6b7a; }
             QLabel#SectionTitle { font-size: 16px; font-weight: 700; color: #172033; }
-            QLabel#MetricLabel { color: #172033; font-weight: 600; }
-            QTabWidget::pane { border: 1px solid #d8dee8; background: white; border-radius: 6px; }
-            QTabBar::tab { padding: 9px 16px; border: 1px solid #d8dee8; background: #eef2f7; margin-right: 3px; }
-            QTabBar::tab:selected { background: white; border-bottom-color: white; font-weight: 700; }
-            QGroupBox { border: 1px solid #d8dee8; border-radius: 6px; margin-top: 10px; padding: 12px; background: white; }
+            QLabel#MetricLabel { color: #1f2937; font-weight: 700; background: #eef4fb; border: 1px solid #d7e2ee; border-radius: 6px; padding: 6px 9px; }
+            QTabWidget#WorkspaceTabs::pane { border: 1px solid #d4dde8; background: white; border-radius: 0; top: -1px; }
+            QTabBar::tab { min-width: 92px; padding: 10px 14px; border: 1px solid #d4dde8; background: #edf2f7; margin-right: 2px; color: #1f2937; }
+            QTabBar::tab:selected { background: white; border-bottom-color: white; font-weight: 700; color: #111827; }
+            QTabBar::tab:hover { background: #f8fafc; }
+            QGroupBox { border: 1px solid #d8dee8; border-radius: 6px; margin-top: 10px; padding: 12px; background: #ffffff; }
             QGroupBox#SidebarGroup { background: #fbfcfe; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
-            QPushButton { padding: 8px 12px; border: 1px solid #b9c2cf; border-radius: 6px; background: white; }
-            QPushButton:hover { background: #eef4ff; }
+            QPushButton { padding: 8px 12px; border: 1px solid #b7c2d0; border-radius: 6px; background: #ffffff; color: #111827; }
+            QPushButton:hover { background: #eef5ff; border-color: #8fb2df; }
+            QPushButton#PrimaryButton { background: #1d4ed8; border-color: #1d4ed8; color: white; font-weight: 700; }
+            QPushButton#PrimaryButton:hover { background: #1e40af; border-color: #1e40af; }
+            QPushButton#DangerButton { color: #991b1b; border-color: #e1a1a1; background: #fff7f7; }
+            QPushButton#DangerButton:hover { background: #fee2e2; border-color: #dc2626; }
             QPushButton:disabled { color: #8492a6; background: #eef2f7; }
-            QLineEdit { padding: 8px; border: 1px solid #b9c2cf; border-radius: 6px; background: white; }
-            QTableWidget { background: white; border: 1px solid #d8dee8; gridline-color: #edf1f5; }
+            QLineEdit, QComboBox { padding: 7px; border: 1px solid #b9c2cf; border-radius: 6px; background: white; }
+            QLineEdit:focus, QComboBox:focus { border-color: #2563eb; }
+            QTableWidget { background: white; border: 1px solid #d8dee8; gridline-color: #edf1f5; selection-background-color: #2563eb; selection-color: white; }
             QTableWidget { alternate-background-color: #f9fbfd; }
             QTextEdit { background: white; border: 1px solid #d8dee8; border-radius: 6px; padding: 8px; }
-            QHeaderView::section { background: #e9eef5; padding: 7px; border: 0; border-right: 1px solid #d8dee8; font-weight: 600; }
+            QHeaderView::section { background: #edf2f7; padding: 7px; border: 0; border-right: 1px solid #d8dee8; font-weight: 700; color: #1f2937; }
             """
         )
 
@@ -1195,6 +1208,7 @@ class MainWindow(QMainWindow):
             self.update_details_from_selection()
         else:
             self.details_text.clear()
+            self.details_title_label.setText("Détails sélection")
         self.update_summary()
 
     def _set_row_items(self, row: int, row_data: dict[str, Any]) -> None:
@@ -1669,6 +1683,7 @@ class MainWindow(QMainWindow):
             self.open_details(row_data)
 
     def open_details(self, row_data: dict[str, Any]) -> None:
+        self.details_title_label.setText(f"{row_data['app'].display_name()} - {row_data['app'].package_name}")
         self.details_text.setPlainText(build_app_details_text(row_data))
         self.status_label.setText(f"Détails affichés : {row_data['app'].package_name}")
         self.tabs.setCurrentIndex(self.details_tab_index)
@@ -1682,6 +1697,7 @@ class MainWindow(QMainWindow):
             return
         row_data = self.row_by_package(package_item.text())
         if row_data:
+            self.details_title_label.setText(f"{row_data['app'].display_name()} - {row_data['app'].package_name}")
             self.details_text.setPlainText(build_app_details_text(row_data))
 
     def row_by_package(self, package: str) -> dict[str, Any] | None:
