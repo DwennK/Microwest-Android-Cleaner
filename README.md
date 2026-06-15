@@ -158,26 +158,39 @@ Le diagnostic vérifie que ces dossiers sont créables et accessibles en écritu
 
 ## Utilisation
 
-1. Cliquer sur `Détecter téléphone`.
+L'interface est organisée en onglets pour garder le tableau lisible même en plein écran :
+
+- `Connexion` : état détaillé du téléphone, sélection ADB, diagnostic et réparation ADB ;
+- `Scan` : lancement du scan, annulation, progression et option d'inclusion des apps système ;
+- `Résultats` : tableau pleine largeur, recherche, filtres, sélection et actions de triage ;
+- `Détails` : fiche complète de l'application sélectionnée ;
+- `Exports` : rapports, CSV, plan d'action, historique et mode démo.
+
+Flux recommandé :
+
+1. Dans `Connexion`, cliquer sur `Détecter téléphone`.
 2. Vérifier le modèle, la version Android et le numéro ADB.
-3. Cliquer sur `Scanner les apps`.
+3. Dans `Scan`, cliquer sur `Scanner les apps`.
 4. Suivre la barre de progression. Le bouton `Annuler scan` arrête proprement le scan en cours.
-5. Examiner les scores et les raisons.
-6. Sélectionner une app pour voir ses détails dans le panneau latéral droit.
-7. Cocher uniquement les applications validées manuellement.
-8. Cliquer sur `Désinstaller sélection`.
-9. Confirmer la liste affichée.
-10. Exporter un rapport client avec `Exporter rapport`, ou une table brute avec `Exporter CSV`.
+5. À la fin du scan, l'application ouvre automatiquement `Résultats`.
+6. Examiner les scores, filtrer la liste et sélectionner les apps à vérifier.
+7. Double-cliquer une ligne ou utiliser `Voir détails` pour ouvrir l'onglet `Détails`.
+8. Cocher uniquement les applications validées manuellement.
+9. Cliquer sur `Désinstaller sélection`.
+10. Confirmer la liste affichée.
+11. Dans `Exports`, générer un rapport client avec `Exporter rapport`, ou une table brute avec `Exporter CSV`.
 
 Par défaut, seules les applications utilisateur sont scannées. La case `Afficher apps système` permet de les afficher aussi, mais les applications système Samsung/Google/Microsoft connues sont marquées `do_not_touch`.
 
-Le bouton `Paramètres app` ouvre sur le téléphone la fiche Android de l'application sélectionnée. Il utilise une commande ADB non destructive :
+Le statut global reste visible dans l'en-tête. Les informations complètes du téléphone sont dans `Connexion` pour ne pas réduire la zone du tableau.
+
+Le bouton `Paramètres app` dans `Résultats` ouvre sur le téléphone la fiche Android de l'application sélectionnée. Il utilise une commande ADB non destructive :
 
 ```powershell
 adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:PACKAGE
 ```
 
-Les filtres `Apps cachées` et `Audit notifications` permettent d'isoler rapidement les apps peu visibles ou capables de générer du spam de notifications. L'application ne lit pas le contenu des notifications.
+Les filtres de l'onglet `Résultats` permettent d'isoler rapidement les apps peu visibles ou capables de générer du spam de notifications. L'application ne lit pas le contenu des notifications.
 
 Filtres supplémentaires :
 
@@ -185,7 +198,7 @@ Filtres supplémentaires :
 - `Score min` pour afficher uniquement les apps au-dessus d'un seuil ;
 - `Toutes permissions` pour filtrer par famille de permissions sensibles.
 
-La synthèse au-dessus du tableau affiche le nombre total d'apps, les apps à traiter, les apps à vérifier, les apps cachées, les apps sideload et les lignes cochées.
+La synthèse au-dessus du tableau `Résultats` affiche le nombre total d'apps, les apps à traiter, les apps à vérifier, les apps cachées, les apps sideload et les lignes cochées.
 
 Boutons de triage :
 
@@ -193,13 +206,14 @@ Boutons de triage :
 - `Cocher review` coche les apps à vérifier manuellement ;
 - `Tout décocher` remet la sélection à zéro ;
 - `Note sélection` ajoute une note locale persistante au package sélectionné ;
-- clic droit sur une ligne puis `Note technicien` permet aussi de gérer la note.
+- clic droit sur une ligne puis `Note technicien` permet aussi de gérer la note ;
+- double-clic sur une ligne ouvre l'onglet `Détails` avec la fiche complète.
 
 Les notes technicien sont conservées dans la base SQLite portable et apparaissent dans les détails, le CSV et le rapport HTML.
 
-Le bouton `Plan action` exporte un fichier texte dans `reports/` avec les apps à valider, les raisons principales et les commandes ADB exactes à n'utiliser qu'après validation humaine. `Copier plan` place le même plan dans le presse-papiers. `Ouvrir rapports` ouvre le dossier portable `reports/`.
+Dans `Exports`, le bouton `Plan action` exporte un fichier texte dans `reports/` avec les apps à valider, les raisons principales et les commandes ADB exactes à n'utiliser qu'après validation humaine. `Copier plan` place le même plan dans le presse-papiers. `Ouvrir rapports` ouvre le dossier portable `reports/`.
 
-Le bouton `Mode démo` charge un faux téléphone et des apps fictives pour tester l'interface sans Android branché. Le bouton `Historique` affiche les derniers scans enregistrés dans la base SQLite portable.
+Le bouton `Mode démo` charge un faux téléphone et des apps fictives pour tester l'interface sans Android branché, puis ouvre `Résultats`. Le bouton `Historique` affiche les derniers scans enregistrés dans la base SQLite portable.
 
 ## Détection des apps suspectes
 
