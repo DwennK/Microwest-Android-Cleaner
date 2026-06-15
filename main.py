@@ -412,37 +412,28 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(18, 14, 18, 18)
         main_layout.setSpacing(10)
 
+        header_layout = QHBoxLayout()
+        title_block = QVBoxLayout()
+        title_block.setSpacing(2)
         title = QLabel("Microwest Android Cleaner")
         title.setObjectName("Title")
         subtitle = QLabel("Diagnostic Android / Samsung")
         subtitle.setObjectName("Subtitle")
-        main_layout.addWidget(title)
-        main_layout.addWidget(subtitle)
-
-        state_box = QGroupBox("Téléphone")
-        state_box.setMaximumHeight(118)
-        state_layout = QGridLayout(state_box)
-        state_layout.setHorizontalSpacing(14)
-        state_layout.setVerticalSpacing(6)
+        title_block.addWidget(title)
+        title_block.addWidget(subtitle)
         self.status_label = QLabel("Aucun appareil détecté")
+        self.status_label.setObjectName("StatusPill")
+        self.status_label.setMinimumWidth(320)
+        self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        header_layout.addLayout(title_block, 1)
+        header_layout.addWidget(self.status_label)
+        main_layout.addLayout(header_layout)
+
         self.model_label = QLabel("-")
         self.android_label = QLabel("-")
         self.serial_label = QLabel("-")
         self.device_combo = QComboBox()
         self.device_combo.addItem("Auto", "")
-        state_layout.addWidget(QLabel("Statut"), 0, 0)
-        state_layout.addWidget(self.status_label, 0, 1)
-        state_layout.addWidget(QLabel("Modèle"), 0, 2)
-        state_layout.addWidget(self.model_label, 0, 3)
-        state_layout.addWidget(QLabel("Android"), 0, 4)
-        state_layout.addWidget(self.android_label, 0, 5)
-        state_layout.addWidget(QLabel("ADB"), 1, 0)
-        state_layout.addWidget(self.serial_label, 1, 1)
-        state_layout.addWidget(QLabel("Appareil"), 1, 2)
-        state_layout.addWidget(self.device_combo, 1, 3, 1, 3)
-        state_layout.setColumnStretch(1, 2)
-        state_layout.setColumnStretch(3, 2)
-        main_layout.addWidget(state_box)
 
         self.detect_button = QPushButton("Détecter téléphone")
         self.adb_diagnostic_button = QPushButton("Diagnostic ADB")
@@ -478,6 +469,22 @@ class MainWindow(QMainWindow):
         connection_layout.setContentsMargins(12, 12, 12, 12)
         connection_layout.setSpacing(12)
 
+        phone_box = QGroupBox("Téléphone")
+        phone_layout = QGridLayout(phone_box)
+        phone_layout.setHorizontalSpacing(14)
+        phone_layout.setVerticalSpacing(8)
+        phone_layout.addWidget(QLabel("Modèle"), 0, 0)
+        phone_layout.addWidget(self.model_label, 0, 1)
+        phone_layout.addWidget(QLabel("Android"), 0, 2)
+        phone_layout.addWidget(self.android_label, 0, 3)
+        phone_layout.addWidget(QLabel("ADB"), 1, 0)
+        phone_layout.addWidget(self.serial_label, 1, 1)
+        phone_layout.addWidget(QLabel("Appareil"), 1, 2)
+        phone_layout.addWidget(self.device_combo, 1, 3)
+        phone_layout.setColumnStretch(1, 1)
+        phone_layout.setColumnStretch(3, 2)
+        connection_layout.addWidget(phone_box)
+
         connection_actions = QHBoxLayout()
         for button in (
             self.detect_button,
@@ -507,7 +514,7 @@ class MainWindow(QMainWindow):
         scan_tab = QWidget()
         scan_layout = QVBoxLayout(scan_tab)
         scan_layout.setContentsMargins(12, 12, 12, 12)
-        scan_layout.setSpacing(10)
+        scan_layout.setSpacing(14)
 
         self.scan_progress = QProgressBar()
         self.scan_progress.setRange(0, 100)
@@ -540,30 +547,32 @@ class MainWindow(QMainWindow):
         self.clear_checks_button = QPushButton("Tout décocher")
         self.note_button = QPushButton("Note sélection")
 
-        scan_splitter = QSplitter(Qt.Horizontal)
-        scan_splitter.setChildrenCollapsible(False)
+        scan_controls = QGroupBox("Scan")
+        scan_controls_layout = QGridLayout(scan_controls)
+        scan_controls_layout.setHorizontalSpacing(12)
+        scan_controls_layout.setVerticalSpacing(10)
+        scan_controls_layout.addWidget(self.scan_button, 0, 0)
+        scan_controls_layout.addWidget(self.cancel_scan_button, 0, 1)
+        scan_controls_layout.addWidget(self.ai_button, 0, 2)
+        scan_controls_layout.addWidget(self.include_system_checkbox, 1, 0, 1, 3)
+        scan_controls_layout.addWidget(self.scan_progress, 2, 0, 1, 3)
+        scan_controls_layout.addWidget(self.progress_label, 3, 0, 1, 3)
+        scan_layout.addWidget(scan_controls)
 
-        scan_sidebar = QWidget()
-        scan_sidebar.setMinimumWidth(285)
-        scan_sidebar.setMaximumWidth(340)
-        sidebar_layout = QVBoxLayout(scan_sidebar)
-        sidebar_layout.setContentsMargins(0, 0, 8, 0)
-        sidebar_layout.setSpacing(10)
+        scan_hint = QLabel(
+            "Lancez le scan ici. Quand il se termine, l'app ouvre automatiquement l'onglet Résultats."
+        )
+        scan_hint.setObjectName("Muted")
+        scan_hint.setWordWrap(True)
+        scan_layout.addWidget(scan_hint)
+        scan_layout.addStretch(1)
 
-        scan_box = QGroupBox("Scan")
-        scan_box.setObjectName("SidebarGroup")
-        scan_box_layout = QVBoxLayout(scan_box)
-        scan_box_layout.setSpacing(8)
-        scan_box_layout.addWidget(self.scan_button)
-        scan_box_layout.addWidget(self.cancel_scan_button)
-        scan_box_layout.addWidget(self.ai_button)
-        scan_box_layout.addWidget(self.scan_progress)
-        scan_box_layout.addWidget(self.progress_label)
-        sidebar_layout.addWidget(scan_box)
+        results_tab = QWidget()
+        results_layout = QVBoxLayout(results_tab)
+        results_layout.setContentsMargins(12, 12, 12, 12)
+        results_layout.setSpacing(10)
 
-        summary_box = QGroupBox("Résumé")
-        summary_box.setObjectName("SidebarGroup")
-        summary_grid = QGridLayout(summary_box)
+        summary_strip = QHBoxLayout()
         for index, label in enumerate(
             (
                 self.summary_total_label,
@@ -574,46 +583,43 @@ class MainWindow(QMainWindow):
                 self.summary_selected_label,
             )
         ):
-            summary_grid.addWidget(label, index // 2, index % 2)
-        sidebar_layout.addWidget(summary_box)
+            label.setObjectName("MetricLabel")
+            summary_strip.addWidget(label)
+            if index < 5:
+                summary_strip.addSpacing(10)
+        summary_strip.addStretch(1)
+        results_layout.addLayout(summary_strip)
 
-        filters_box = QGroupBox("Filtres")
-        filters_box.setObjectName("SidebarGroup")
-        filters_layout = QVBoxLayout(filters_box)
-        filters_layout.setSpacing(8)
-        filters_layout.addWidget(self.score_filter)
-        filters_layout.addWidget(self.permission_filter)
-        filters_layout.addWidget(self.hide_safe_checkbox)
-        filters_layout.addWidget(self.hidden_apps_checkbox)
-        filters_layout.addWidget(self.notification_audit_checkbox)
-        filters_layout.addWidget(self.sideload_checkbox)
-        filters_layout.addWidget(self.include_system_checkbox)
-        sidebar_layout.addWidget(filters_box)
+        filters_row = QHBoxLayout()
+        filters_row.addWidget(self.search_input, 1)
+        filters_row.addWidget(self.score_filter)
+        filters_row.addWidget(self.permission_filter)
+        results_layout.addLayout(filters_row)
 
-        selection_box = QGroupBox("Sélection")
-        selection_box.setObjectName("SidebarGroup")
-        selection_layout = QGridLayout(selection_box)
-        selection_layout.addWidget(self.select_high_button, 0, 0)
-        selection_layout.addWidget(self.select_review_button, 0, 1)
-        selection_layout.addWidget(self.clear_checks_button, 1, 0)
-        selection_layout.addWidget(self.note_button, 1, 1)
-        selection_layout.addWidget(self.open_settings_button, 2, 0, 1, 2)
-        selection_layout.addWidget(self.uninstall_button, 3, 0, 1, 2)
-        selection_layout.addWidget(self.reload_button, 4, 0, 1, 2)
-        sidebar_layout.addWidget(selection_box)
-        sidebar_layout.addStretch(1)
+        flags_row = QHBoxLayout()
+        for checkbox in (
+            self.hide_safe_checkbox,
+            self.hidden_apps_checkbox,
+            self.notification_audit_checkbox,
+            self.sideload_checkbox,
+        ):
+            flags_row.addWidget(checkbox)
+        flags_row.addStretch(1)
+        results_layout.addLayout(flags_row)
 
-        results_panel = QWidget()
-        results_layout = QVBoxLayout(results_panel)
-        results_layout.setContentsMargins(0, 0, 0, 0)
-        results_layout.setSpacing(10)
-
-        results_toolbar = QHBoxLayout()
-        results_title = QLabel("Résultats")
-        results_title.setObjectName("SectionTitle")
-        results_toolbar.addWidget(results_title)
-        results_toolbar.addWidget(self.search_input, 1)
-        results_layout.addLayout(results_toolbar)
+        selection_toolbar = QHBoxLayout()
+        for button in (
+            self.select_high_button,
+            self.select_review_button,
+            self.clear_checks_button,
+            self.note_button,
+            self.open_settings_button,
+            self.uninstall_button,
+            self.reload_button,
+        ):
+            selection_toolbar.addWidget(button)
+        selection_toolbar.addStretch(1)
+        results_layout.addLayout(selection_toolbar)
 
         self.table = QTableWidget(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
@@ -643,29 +649,19 @@ class MainWindow(QMainWindow):
         for column in (3, 7, 8, 9, self.COL_NOTE, self.COL_REASONS, 12):
             self.table.setColumnHidden(column, True)
 
+        results_layout.addWidget(self.table, 1)
+
+        details_tab = QWidget()
+        details_layout = QVBoxLayout(details_tab)
+        details_layout.setContentsMargins(12, 12, 12, 12)
+        details_layout.setSpacing(10)
+        details_header = QLabel("Détails sélection")
+        details_header.setObjectName("SectionTitle")
+        details_layout.addWidget(details_header)
         self.details_text = QTextEdit()
         self.details_text.setReadOnly(True)
-        self.details_text.setPlaceholderText("Sélectionnez une application pour afficher ses détails.")
-        self.details_text.setMinimumWidth(280)
-
-        details_box = QGroupBox("Détails")
-        details_layout = QVBoxLayout(details_box)
-        details_layout.addWidget(self.details_text)
-
-        content_splitter = QSplitter(Qt.Horizontal)
-        content_splitter.addWidget(self.table)
-        content_splitter.addWidget(details_box)
-        content_splitter.setStretchFactor(0, 4)
-        content_splitter.setStretchFactor(1, 1)
-        content_splitter.setSizes([900, 320])
-        results_layout.addWidget(content_splitter, 1)
-
-        scan_splitter.addWidget(scan_sidebar)
-        scan_splitter.addWidget(results_panel)
-        scan_splitter.setStretchFactor(0, 0)
-        scan_splitter.setStretchFactor(1, 1)
-        scan_splitter.setSizes([310, 980])
-        scan_layout.addWidget(scan_splitter, 1)
+        self.details_text.setPlaceholderText("Sélectionnez une application dans Résultats pour afficher ses détails.")
+        details_layout.addWidget(self.details_text, 1)
 
         exports_tab = QWidget()
         exports_layout = QVBoxLayout(exports_tab)
@@ -693,7 +689,9 @@ class MainWindow(QMainWindow):
         exports_layout.addStretch(1)
 
         self.connection_tab_index = self.tabs.addTab(connection_tab, "Connexion")
-        self.scan_tab_index = self.tabs.addTab(scan_tab, "Scan && triage")
+        self.scan_tab_index = self.tabs.addTab(scan_tab, "Scan")
+        self.results_tab_index = self.tabs.addTab(results_tab, "Résultats")
+        self.details_tab_index = self.tabs.addTab(details_tab, "Détails")
         self.exports_tab_index = self.tabs.addTab(exports_tab, "Exports")
 
         self.setCentralWidget(root)
@@ -739,8 +737,10 @@ class MainWindow(QMainWindow):
             QMainWindow { background: #f5f7fa; }
             QLabel#Title { font-size: 26px; font-weight: 700; color: #172033; }
             QLabel#Subtitle { font-size: 14px; color: #5f6b7a; }
+            QLabel#StatusPill { color: #2d3748; background: #e9eef5; border: 1px solid #d8dee8; border-radius: 6px; padding: 7px 10px; }
             QLabel#Muted { color: #5f6b7a; }
             QLabel#SectionTitle { font-size: 16px; font-weight: 700; color: #172033; }
+            QLabel#MetricLabel { color: #172033; font-weight: 600; }
             QTabWidget::pane { border: 1px solid #d8dee8; background: white; border-radius: 6px; }
             QTabBar::tab { padding: 9px 16px; border: 1px solid #d8dee8; background: #eef2f7; margin-right: 3px; }
             QTabBar::tab:selected { background: white; border-bottom-color: white; font-weight: 700; }
@@ -1011,6 +1011,8 @@ class MainWindow(QMainWindow):
         else:
             self.status_label.setText(f"Scan terminé : {len(rows)} apps, {suspicious} suspectes.")
             self.progress_label.setText("Scan terminé")
+        if rows:
+            self.tabs.setCurrentIndex(self.results_tab_index)
 
     def on_scan_worker_finished(self) -> None:
         self.scan_worker = None
@@ -1194,6 +1196,7 @@ class MainWindow(QMainWindow):
                 )
         self.populate_table()
         self.status_label.setText(f"Analyse IA terminée : {len(results)} résultat(s).")
+        self.tabs.setCurrentIndex(self.results_tab_index)
 
     def open_selected_app_settings(self) -> None:
         row_data = self.current_or_checked_row()
@@ -1368,7 +1371,6 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Historique des scans", "\n".join(lines))
 
     def load_demo_data(self) -> None:
-        self.tabs.setCurrentIndex(self.scan_tab_index)
         self.device = DeviceInfo(
             serial="DEMO-ANDROID",
             state="device",
@@ -1428,6 +1430,7 @@ class MainWindow(QMainWindow):
         self.scan_progress.setValue(100)
         self.progress_label.setText("Mode démo")
         self.status_label.setText("Mode démo chargé : données fictives.")
+        self.tabs.setCurrentIndex(self.results_tab_index)
 
     def reload_reputation(self) -> None:
         self.db = ReputationDatabase()
@@ -1506,6 +1509,7 @@ class MainWindow(QMainWindow):
     def open_details(self, row_data: dict[str, Any]) -> None:
         self.details_text.setPlainText(build_app_details_text(row_data))
         self.status_label.setText(f"Détails affichés : {row_data['app'].package_name}")
+        self.tabs.setCurrentIndex(self.details_tab_index)
 
     def update_details_from_selection(self) -> None:
         current_items = self.table.selectedItems()
