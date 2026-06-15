@@ -223,16 +223,26 @@ Signaux utilisés :
 
 ## Analyse IA optionnelle
 
-L'analyse IA utilise l'API OpenAI uniquement si une clé est configurée.
+L'analyse IA utilise OpenAI par défaut, ou MiniMax si `AI_PROVIDER=minimax` est configuré.
 
 Créer un fichier `.env` à côté de `main.py` :
 
 ```text
+AI_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-Si la clé est absente, le bouton IA est désactivé.
+Pour MiniMax :
+
+```text
+AI_PROVIDER=minimax
+MINIMAX_API_KEY=...
+MINIMAX_MODEL=MiniMax-M3
+MINIMAX_BASE_URL=https://api.minimax.io/v1
+```
+
+Si la clé du provider choisi est absente, le bouton IA est désactivé.
 
 L'IA reçoit uniquement :
 

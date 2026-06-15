@@ -761,11 +761,13 @@ class MainWindow(QMainWindow):
     def _apply_ai_button_state(self) -> None:
         if self.ai_analyzer.enabled:
             self.ai_button.setEnabled(True)
-            self.ai_button.setToolTip("Analyse les apps déjà suspectes avec l'API OpenAI.")
+            self.ai_button.setText(f"Analyser avec IA ({self.ai_analyzer.provider_label})")
+            self.ai_button.setToolTip(f"Analyse les apps déjà suspectes avec {self.ai_analyzer.provider_label}.")
         else:
+            key_name = "MINIMAX_API_KEY" if self.ai_analyzer.provider == "minimax" else "OPENAI_API_KEY"
             self.ai_button.setEnabled(False)
             self.ai_button.setText("Analyser avec IA (clé .env absente)")
-            self.ai_button.setToolTip("Ajoutez OPENAI_API_KEY dans .env pour activer cette option.")
+            self.ai_button.setToolTip(f"Ajoutez {key_name} dans .env pour activer cette option.")
 
     def set_busy(self, busy: bool, message: str = "") -> None:
         self.is_busy = busy

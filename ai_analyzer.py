@@ -33,22 +33,38 @@ class AIResult:
 class AIAnalyzer:
     def __init__(self) -> None:
         load_dotenv()
-        self.api_key = os.getenv("OPENAI_API_KEY", "").strip()
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
+        self.provider = os.getenv("AI_PROVIDER", "openai").strip().lower()
+        if self.provider == "minimax":
+            self.api_key = os.getenv("MINIMAX_API_KEY", "").strip()
+            self.model = os.getenv("MINIMAX_MODEL", "MiniMax-M3").strip()
+            self.base_url = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1").strip()
+        else:
+            self.provider = "openai"
+            self.api_key = os.getenv("OPENAI_API_KEY", "").strip()
+            self.model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
+            self.base_url = os.getenv("OPENAI_BASE_URL", "").strip()
 
     @property
     def enabled(self) -> bool:
         return bool(self.api_key)
 
+    @property
+    def provider_label(self) -> str:
+        return "MiniMax" if self.provider == "minimax" else "OpenAI"
+
     def analyze(self, apps: list[dict[str, Any]]) -> dict[str, AIResult]:
         if not self.enabled:
-            raise RuntimeError("OPENAI_API_KEY absent. Ajoutez une clé dans le fichier .env pour activer l'analyse IA.")
+            key_name = "MINIMAX_API_KEY" if self.provider == "minimax" else "OPENAI_API_KEY"
+            raise RuntimeError(f"{key_name} absent. Ajoutez une clé dans le fichier .env pour activer l'analyse IA.")
         if not apps:
             return {}
 
         from openai import OpenAI
 
-        client = OpenAI(api_key=self.api_key)
+        client_kwargs: dict[str, Any] = {"api_key": self.api_key}
+        if self.base_url:
+            client_kwargs["base_url"] = self.base_url
+        client = OpenAI(**client_kwargs)
         payload = {
             "instruction": "Analyse ces applications préfiltrées et retourne un objet JSON avec une clé apps.",
             "format": {
@@ -65,15 +81,24 @@ class AIAnalyzer:
             },
             "apps": apps,
         }
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=[
+        request = {
+            "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
-        )
+            "temperature": 0.1,
+        }
+        try:
+            response = client.chat.completions.create(
+                model=self.model,
+                response_format={"type": "json_object"},
+                **request,
+            )
+        except Exception:  # noqa: BLE001 - some OpenAI-compatible providers reject response_format.
+            if self.provider != "minimax":
+                raise
+            LOGGER.info("MiniMax rejected response_format; retrying with JSON prompt only.")
+            response = client.chat.completions.create(model=self.model, **request)
         content = response.choices[0].message.content or "{}"
         return self._parse_response(content)
 

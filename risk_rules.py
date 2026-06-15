@@ -9,13 +9,24 @@ from scanner import AppInfo, installed_recently
 SAFE_INSTALLERS = {
     "com.android.vending": "Google Play",
     "com.sec.android.app.samsungapps": "Galaxy Store",
+    "com.sec.android.app.updatecenter": "Samsung Update Center",
+    "com.samsung.android.app.updatecenter": "Samsung Update Center",
+    "com.sec.android.easyMover": "Samsung Smart Switch",
 }
 
 OFFICIAL_PREFIXES = (
-    "com.google.",
     "com.android.",
-    "com.samsung.",
-    "com.sec.",
+    "com.google.android.",
+    "com.samsung.android.",
+    "com.sec.android.",
+    "com.microsoft.",
+)
+
+TRUSTED_OFFICIAL_PREFIXES = (
+    "com.android.",
+    "com.google.android.",
+    "com.samsung.android.",
+    "com.sec.android.",
     "com.microsoft.",
 )
 
@@ -178,6 +189,7 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
     reputation = reputation or ReputationLookup()
     score = 0
     reasons: list[str] = []
+    trusted_official = is_trusted_official_package(app)
 
     if app.is_system_app and is_known_system_package(app.package_name):
         return RiskResult(
@@ -198,7 +210,7 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
     sensitive_count = len(app.sensitive_permissions)
     has_suspicious_name = contains_any(label_and_package(app), SUSPICIOUS_WORDS)
     has_cleaner_bait = contains_any(label_and_package(app), CLEANER_BAIT_WORDS)
-    has_scam_bait = contains_any(label_and_package(app), SCAM_BAIT_WORDS)
+    has_scam_bait = contains_scam_bait(label_and_package(app))
     has_unknown_installer = not app.installer or app.installer not in SAFE_INSTALLERS
     has_hidden_profile = bool(app.hidden_audit) and app.has_launcher_entry is False
     has_notification_profile = bool(app.notification_audit)
@@ -207,16 +219,16 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score += 35
         reasons.append("Service d'accessibilité détecté.")
 
-    if app.has_overlay or _has_permission(app, "SYSTEM_ALERT_WINDOW"):
+    if (app.has_overlay or _has_permission(app, "SYSTEM_ALERT_WINDOW")) and not trusted_official:
         score += 30
         reasons.append("Permission overlay SYSTEM_ALERT_WINDOW détectée.")
 
     dangerous = [p for p in app.sensitive_permissions if any(marker in p for marker in HIGH_RISK_PERMISSION_MARKERS)]
-    if dangerous:
+    if dangerous and not trusted_official:
         score += 25
         reasons.append("Permissions sensibles SMS/appels/contacts/admin/notifications détectées.")
 
-    if sensitive_count >= 5:
+    if sensitive_count >= 5 and not trusted_official:
         score += 20
         reasons.append("Nombre élevé de permissions sensibles.")
 
@@ -227,16 +239,16 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score -= 20
         reasons.append(f"Installé via {SAFE_INSTALLERS[app.installer]}.")
 
-    if has_suspicious_name:
+    if has_suspicious_name and not trusted_official:
         score += 20
         reasons.append("Nom ou package contenant un mot souvent associé à adware/scam.")
 
-    if has_scam_bait:
+    if has_scam_bait and not trusted_official:
         score += 20
         reasons.append("Nom évoquant gain, cadeau, crédit ou récompense : signal courant d'arnaque.")
 
     normalized_label = app.display_name().strip().lower()
-    if any(name == normalized_label or name in label_and_package(app) for name in GENERIC_SYSTEM_NAMES):
+    if not trusted_official and any(name == normalized_label or name in label_and_package(app) for name in GENERIC_SYSTEM_NAMES):
         score += 15
         reasons.append("Nom générique pouvant imiter une application système.")
 
@@ -244,7 +256,7 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score += 15
         reasons.append("Application installée récemment.")
 
-    if app.has_accessibility and not reputation.whitelisted:
+    if app.has_accessibility and not reputation.whitelisted and not trusted_official:
         score += 30
         reasons.append("Accessibilité demandée sans whitelist locale.")
 
@@ -256,15 +268,15 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score += 35
         reasons.append("Accès aux notifications détecté.")
 
-    if app.requests_post_notifications and has_suspicious_name:
+    if app.requests_post_notifications and has_suspicious_name and not trusted_official:
         score += 15
         reasons.append("Demande notifications avec nom suspect.")
 
-    if has_notification_profile and len(app.notification_audit) >= 3 and not reputation.whitelisted:
+    if has_notification_profile and len(app.notification_audit) >= 3 and not reputation.whitelisted and not trusted_official:
         score += 20
         reasons.append("Profil notification/spam potentiel : " + ", ".join(app.notification_audit[:4]) + ".")
 
-    if app.can_install_unknown_apps:
+    if app.can_install_unknown_apps and not trusted_official:
         score += 25
         reasons.append("Peut demander l'installation d'apps inconnues.")
 
@@ -276,23 +288,27 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score += 20
         reasons.append("Service VPN/proxy hors installateur de confiance.")
 
-    if app.runs_at_boot and has_suspicious_name:
+    if app.runs_at_boot and has_suspicious_name and not trusted_official:
         score += 15
         reasons.append("Se lance au démarrage et porte un nom suspect.")
 
-    if app.has_launcher_entry is False and not app.is_system_app:
+    if app.has_launcher_entry is False and not app.is_system_app and not trusted_official:
         score += 20
         reasons.append("Application utilisateur sans icône visible dans le launcher.")
 
-    if has_hidden_profile and (has_unknown_installer or has_suspicious_name):
+    if has_hidden_profile and (has_unknown_installer or has_suspicious_name) and not trusted_official:
         score += 25
         reasons.append("Profil peu visible combiné à installateur inconnu ou nom suspect.")
 
-    if app.has_launcher_entry is False and (app.has_notification_listener or app.requests_post_notifications or app.has_overlay):
+    if (
+        app.has_launcher_entry is False
+        and (app.has_notification_listener or app.requests_post_notifications or app.has_overlay)
+        and not trusted_official
+    ):
         score += 25
         reasons.append("App peu visible avec accès notifications ou overlay.")
 
-    if looks_generic_identity(app) and (has_unknown_installer or app.has_launcher_entry is False):
+    if looks_generic_identity(app) and (has_unknown_installer or app.has_launcher_entry is False) and not trusted_official:
         score += 15
         reasons.append("Nom ou icône générique avec visibilité faible.")
 
@@ -304,11 +320,11 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score += 25
         reasons.append("Installateur non fiable + nom suspect + permissions sensibles.")
 
-    if target_sdk_is_old(app.target_sdk):
+    if target_sdk_is_old(app.target_sdk) and not trusted_official:
         score += 15
         reasons.append("Application ciblant une ancienne version Android.")
 
-    if looks_random_or_generic(app.package_name):
+    if looks_random_or_generic(app.package_name) and not trusted_official:
         score += 20
         reasons.append("Package très générique ou semblant aléatoire.")
 
@@ -316,9 +332,9 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score += 35
         reasons.append("Package utilisateur imitant un espace système Google/Samsung/Android.")
 
-    if is_official_package(app):
-        score -= 50
-        reasons.append("Package officiel connu Google/Samsung/Microsoft.")
+    if trusted_official and not reputation.blacklisted:
+        score -= 80
+        reasons.append("Namespace officiel installé via une source fiable.")
 
     score = max(0, min(100, score))
     category, action = classify(score, app, reputation)
@@ -330,6 +346,10 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
 def classify(score: int, app: AppInfo, reputation: ReputationLookup) -> tuple[str, str]:
     if app.is_system_app and is_known_system_package(app.package_name):
         return "do_not_touch_system", "do_not_touch"
+    if is_trusted_official_package(app) and not reputation.blacklisted:
+        if app.has_accessibility or app.has_device_admin or app.has_notification_listener or score >= 50:
+            return "trusted_official_review", "review"
+        return "trusted_official", "keep"
     if reputation.whitelisted or score < 15:
         return "safe", "keep"
     if score < 30:
@@ -338,9 +358,11 @@ def classify(score: int, app: AppInfo, reputation: ReputationLookup) -> tuple[st
         return "do_not_touch_system", "do_not_touch"
     if score < 60:
         return "unknown_review_manually", "review"
+    if app.installer in SAFE_INSTALLERS and not has_strong_uninstall_signal(app):
+        return "unknown_review_manually", "review"
     if app.has_accessibility or app.has_device_admin:
         return "spyware_suspect", "suggest_uninstall"
-    if app.can_install_unknown_apps or contains_any(label_and_package(app), SCAM_BAIT_WORDS):
+    if app.can_install_unknown_apps or contains_scam_bait(label_and_package(app)):
         return "scam_suspect", "suggest_uninstall"
     if app.has_launcher_entry is False or app.notification_audit:
         return "adware_suspect", "suggest_uninstall"
@@ -361,12 +383,44 @@ def contains_any(text: str, words: tuple[str, ...]) -> bool:
     return any(word in text for word in words)
 
 
+def contains_scam_bait(text: str) -> bool:
+    for word in SCAM_BAIT_WORDS:
+        if len(word) <= 3:
+            if re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])", text):
+                return True
+        elif word in text:
+            return True
+    return False
+
+
+def has_strong_uninstall_signal(app: AppInfo) -> bool:
+    if app.has_accessibility or app.has_device_admin or app.has_notification_listener or app.can_install_unknown_apps:
+        return True
+    if app.has_launcher_entry is False and (app.has_overlay or app.requests_post_notifications):
+        return True
+    if has_cleaner_bait_profile(app):
+        return True
+    return False
+
+
+def has_cleaner_bait_profile(app: AppInfo) -> bool:
+    return contains_any(label_and_package(app), CLEANER_BAIT_WORDS) and (
+        app.has_overlay or app.has_accessibility or app.has_notification_listener
+    )
+
+
 def is_official_package(app: AppInfo) -> bool:
-    return app.is_system_app and app.package_name.startswith(OFFICIAL_PREFIXES)
+    return app.package_name.startswith(OFFICIAL_PREFIXES)
+
+
+def is_trusted_official_package(app: AppInfo) -> bool:
+    if app.is_system_app and is_known_system_package(app.package_name):
+        return True
+    return app.package_name.startswith(TRUSTED_OFFICIAL_PREFIXES) and app.installer in SAFE_INSTALLERS
 
 
 def impersonates_official_namespace(app: AppInfo) -> bool:
-    if app.is_system_app:
+    if app.is_system_app or is_trusted_official_package(app):
         return False
     return app.package_name.startswith(OFFICIAL_IMPERSONATION_PREFIXES)
 
