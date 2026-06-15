@@ -164,7 +164,8 @@ L'interface est organisée en onglets pour garder le tableau lisible même en pl
 - `Scan` : lancement du scan, annulation, progression et option d'inclusion des apps système ;
 - `Résultats` : tableau pleine largeur, recherche, filtres, sélection et actions de triage ;
 - `Détails` : fiche complète de l'application sélectionnée ;
-- `Exports` : rapports, CSV, plan d'action, historique et mode démo.
+- `Exports` : rapports, CSV, plan d'action et historique ;
+- `Paramètres` : mode démo, choix du provider IA, modèles, base URL et accès aux dossiers portables.
 
 Flux recommandé :
 
@@ -213,7 +214,7 @@ Les notes technicien sont conservées dans la base SQLite portable et apparaisse
 
 Dans `Exports`, le bouton `Plan action` exporte un fichier texte dans `reports/` avec les apps à valider, les raisons principales et les commandes ADB exactes à n'utiliser qu'après validation humaine. `Copier plan` place le même plan dans le presse-papiers. `Ouvrir rapports` ouvre le dossier portable `reports/`.
 
-Le bouton `Mode démo` charge un faux téléphone et des apps fictives pour tester l'interface sans Android branché, puis ouvre `Résultats`. Le bouton `Historique` affiche les derniers scans enregistrés dans la base SQLite portable.
+Dans `Paramètres`, le bouton `Mode démo` charge un faux téléphone et des apps fictives pour tester l'interface sans Android branché, puis ouvre `Résultats`. Les boutons `Ouvrir dossier data` et `Ouvrir logs` ouvrent les dossiers portables correspondants. Le bouton `Historique` dans `Exports` affiche les derniers scans enregistrés dans la base SQLite portable.
 
 ## Détection des apps suspectes
 
@@ -237,7 +238,7 @@ Signaux utilisés :
 
 ## Analyse IA optionnelle
 
-L'analyse IA utilise OpenAI par défaut, ou MiniMax si `AI_PROVIDER=minimax` est configuré.
+L'analyse IA utilise OpenAI par défaut, ou MiniMax si `AI_PROVIDER=minimax` est configuré. Le provider, les modèles et les base URLs peuvent aussi être choisis dans l'onglet `Paramètres`.
 
 Créer un fichier `.env` à côté de `main.py` :
 
@@ -256,7 +257,15 @@ MINIMAX_MODEL=MiniMax-M3
 MINIMAX_BASE_URL=https://api.minimax.io/v1
 ```
 
-Si la clé du provider choisi est absente, le bouton IA est désactivé.
+Si la clé du provider choisi est absente, le bouton IA est désactivé. L'onglet `Paramètres` affiche l'état de la clé attendue.
+
+Les préférences choisies dans l'interface sont enregistrées ici :
+
+```text
+data/ui_settings.json
+```
+
+Ce fichier reste local et portable. Les clés API restent dans `.env` et ne sont pas écrites par l'interface.
 
 L'IA reçoit uniquement :
 
