@@ -31,18 +31,22 @@ class AIResult:
 
 
 class AIAnalyzer:
-    def __init__(self) -> None:
+    def __init__(self, settings: dict[str, Any] | None = None) -> None:
         load_dotenv()
-        self.provider = os.getenv("AI_PROVIDER", "openai").strip().lower()
+        settings = settings or {}
+        configured_provider = str(settings.get("ai_provider") or os.getenv("AI_PROVIDER", "openai")).strip().lower()
+        self.provider = configured_provider
         if self.provider == "minimax":
             self.api_key = os.getenv("MINIMAX_API_KEY", "").strip()
-            self.model = os.getenv("MINIMAX_MODEL", "MiniMax-M3").strip()
-            self.base_url = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1").strip()
+            self.model = str(settings.get("minimax_model") or os.getenv("MINIMAX_MODEL", "MiniMax-M3")).strip()
+            self.base_url = str(
+                settings.get("minimax_base_url") or os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1")
+            ).strip()
         else:
             self.provider = "openai"
             self.api_key = os.getenv("OPENAI_API_KEY", "").strip()
-            self.model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
-            self.base_url = os.getenv("OPENAI_BASE_URL", "").strip()
+            self.model = str(settings.get("openai_model") or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")).strip()
+            self.base_url = str(settings.get("openai_base_url") or os.getenv("OPENAI_BASE_URL", "")).strip()
 
     @property
     def enabled(self) -> bool:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import platform
 import csv
+import json
 import os
 import subprocess
 import sys
@@ -51,6 +52,7 @@ from scanner import AppInfo, AppScanner
 PROJECT_DIR = Path(__file__).resolve().parent
 LOG_DIR = PROJECT_DIR / "logs"
 REPORTS_DIR = PROJECT_DIR / "reports"
+SETTINGS_PATH = PROJECT_DIR / "data" / "ui_settings.json"
 
 
 def setup_logging() -> None:
@@ -63,6 +65,22 @@ def setup_logging() -> None:
             logging.StreamHandler(sys.stderr),
         ],
     )
+
+
+def load_ui_settings() -> dict[str, Any]:
+    try:
+        if SETTINGS_PATH.exists():
+            raw = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                return raw
+    except Exception:  # noqa: BLE001
+        logging.exception("Unable to load UI settings")
+    return {}
+
+
+def save_ui_settings(settings: dict[str, Any]) -> None:
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS_PATH.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def portable_runtime_checks() -> list[tuple[str, str, str]]:
@@ -389,7 +407,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Microwest Android Cleaner")
         self.resize(1320, 780)
         self.db = ReputationDatabase()
-        self.ai_analyzer = AIAnalyzer()
+        self.ui_settings = load_ui_settings()
+        self.ai_analyzer = AIAnalyzer(self.ui_settings)
         self.device = DeviceInfo()
         self.rows: list[dict[str, Any]] = []
         self.uninstalled: list[dict[str, str]] = []
@@ -455,6 +474,9 @@ class MainWindow(QMainWindow):
         self.copy_plan_button = QPushButton("Copier plan")
         self.open_reports_button = QPushButton("Ouvrir rapports")
         self.reload_button = QPushButton("Recharger blacklist/whitelist")
+        self.save_settings_button = QPushButton("Enregistrer paramètres")
+        self.open_data_button = QPushButton("Ouvrir dossier data")
+        self.open_logs_button = QPushButton("Ouvrir logs")
 
         self.cancel_scan_button.setEnabled(False)
         self.copy_diagnostic_button.setEnabled(False)
@@ -678,21 +700,74 @@ class MainWindow(QMainWindow):
         report_layout.addWidget(self.history_button, 2, 1)
         exports_layout.addWidget(report_box)
 
-        tools_box = QGroupBox("Outils")
-        tools_layout = QGridLayout(tools_box)
-        tools_layout.addWidget(self.demo_button, 0, 0)
+        exports_layout.addStretch(1)
+
+        settings_tab = QWidget()
+        settings_layout = QVBoxLayout(settings_tab)
+        settings_layout.setContentsMargins(12, 12, 12, 12)
+        settings_layout.setSpacing(12)
+
+        demo_box = QGroupBox("Démo")
+        demo_layout = QGridLayout(demo_box)
+        demo_layout.addWidget(self.demo_button, 0, 0)
         demo_help = QLabel("Charge un faux téléphone pour tester les filtres, rapports et actions sans Android branché.")
         demo_help.setWordWrap(True)
         demo_help.setObjectName("Muted")
-        tools_layout.addWidget(demo_help, 0, 1)
-        exports_layout.addWidget(tools_box)
-        exports_layout.addStretch(1)
+        demo_layout.addWidget(demo_help, 0, 1)
+        settings_layout.addWidget(demo_box)
+
+        ai_box = QGroupBox("Analyse IA")
+        ai_layout = QGridLayout(ai_box)
+        ai_layout.setHorizontalSpacing(12)
+        ai_layout.setVerticalSpacing(8)
+        self.ai_provider_combo = QComboBox()
+        self.ai_provider_combo.addItem("OpenAI", "openai")
+        self.ai_provider_combo.addItem("MiniMax", "minimax")
+        provider_index = self.ai_provider_combo.findData(self.ai_analyzer.provider)
+        self.ai_provider_combo.setCurrentIndex(max(0, provider_index))
+        self.openai_model_input = QLineEdit(str(self.ui_settings.get("openai_model") or "gpt-4.1-mini"))
+        self.openai_base_url_input = QLineEdit(str(self.ui_settings.get("openai_base_url") or ""))
+        self.minimax_model_input = QLineEdit(str(self.ui_settings.get("minimax_model") or "MiniMax-M3"))
+        self.minimax_base_url_input = QLineEdit(
+            str(self.ui_settings.get("minimax_base_url") or "https://api.minimax.io/v1")
+        )
+        self.ai_key_status_label = QLabel("")
+        self.ai_key_status_label.setObjectName("Muted")
+        ai_layout.addWidget(QLabel("Provider"), 0, 0)
+        ai_layout.addWidget(self.ai_provider_combo, 0, 1)
+        ai_layout.addWidget(self.ai_key_status_label, 0, 2)
+        ai_layout.addWidget(QLabel("Modèle OpenAI"), 1, 0)
+        ai_layout.addWidget(self.openai_model_input, 1, 1, 1, 2)
+        ai_layout.addWidget(QLabel("Base URL OpenAI"), 2, 0)
+        ai_layout.addWidget(self.openai_base_url_input, 2, 1, 1, 2)
+        ai_layout.addWidget(QLabel("Modèle MiniMax"), 3, 0)
+        ai_layout.addWidget(self.minimax_model_input, 3, 1, 1, 2)
+        ai_layout.addWidget(QLabel("Base URL MiniMax"), 4, 0)
+        ai_layout.addWidget(self.minimax_base_url_input, 4, 1, 1, 2)
+        ai_layout.addWidget(self.save_settings_button, 5, 1)
+        ai_hint = QLabel("Les clés API restent dans .env : OPENAI_API_KEY ou MINIMAX_API_KEY.")
+        ai_hint.setWordWrap(True)
+        ai_hint.setObjectName("Muted")
+        ai_layout.addWidget(ai_hint, 6, 0, 1, 3)
+        settings_layout.addWidget(ai_box)
+
+        storage_box = QGroupBox("Stockage portable")
+        storage_layout = QGridLayout(storage_box)
+        storage_layout.addWidget(self.open_data_button, 0, 0)
+        storage_layout.addWidget(self.open_logs_button, 0, 1)
+        storage_note = QLabel("Paramètres, base locale, logs, cache et rapports restent dans le dossier de l'application.")
+        storage_note.setWordWrap(True)
+        storage_note.setObjectName("Muted")
+        storage_layout.addWidget(storage_note, 1, 0, 1, 2)
+        settings_layout.addWidget(storage_box)
+        settings_layout.addStretch(1)
 
         self.connection_tab_index = self.tabs.addTab(connection_tab, "Connexion")
         self.scan_tab_index = self.tabs.addTab(scan_tab, "Scan")
         self.results_tab_index = self.tabs.addTab(results_tab, "Résultats")
         self.details_tab_index = self.tabs.addTab(details_tab, "Détails")
         self.exports_tab_index = self.tabs.addTab(exports_tab, "Exports")
+        self.settings_tab_index = self.tabs.addTab(settings_tab, "Paramètres")
 
         self.setCentralWidget(root)
 
@@ -716,6 +791,10 @@ class MainWindow(QMainWindow):
         self.copy_plan_button.clicked.connect(self.copy_action_plan)
         self.open_reports_button.clicked.connect(self.open_reports_folder)
         self.reload_button.clicked.connect(self.reload_reputation)
+        self.save_settings_button.clicked.connect(self.save_settings_from_ui)
+        self.open_data_button.clicked.connect(lambda: self.open_folder(PROJECT_DIR / "data"))
+        self.open_logs_button.clicked.connect(lambda: self.open_folder(LOG_DIR))
+        self.ai_provider_combo.currentIndexChanged.connect(self.update_ai_settings_status)
         self.select_high_button.clicked.connect(lambda: self.check_rows("high"))
         self.select_review_button.clicked.connect(lambda: self.check_rows("review"))
         self.clear_checks_button.clicked.connect(lambda: self.check_rows("clear"))
@@ -731,6 +810,7 @@ class MainWindow(QMainWindow):
         self.table.itemSelectionChanged.connect(self.update_details_from_selection)
         self.table.itemChanged.connect(self.on_table_item_changed)
         self.table.cellDoubleClicked.connect(self.open_details_for_cell)
+        self.update_ai_settings_status()
 
         self.setStyleSheet(
             """
@@ -769,6 +849,32 @@ class MainWindow(QMainWindow):
             self.ai_button.setText("Analyser avec IA (clé .env absente)")
             self.ai_button.setToolTip(f"Ajoutez {key_name} dans .env pour activer cette option.")
 
+    def update_ai_settings_status(self) -> None:
+        provider = str(self.ai_provider_combo.currentData() or "openai")
+        key_name = "MINIMAX_API_KEY" if provider == "minimax" else "OPENAI_API_KEY"
+        key_present = bool(os.getenv(key_name, "").strip())
+        status = "clé détectée" if key_present else f"{key_name} absent"
+        self.ai_key_status_label.setText(status)
+
+    def save_settings_from_ui(self) -> None:
+        self.ui_settings = {
+            "ai_provider": str(self.ai_provider_combo.currentData() or "openai"),
+            "openai_model": self.openai_model_input.text().strip() or "gpt-4.1-mini",
+            "openai_base_url": self.openai_base_url_input.text().strip(),
+            "minimax_model": self.minimax_model_input.text().strip() or "MiniMax-M3",
+            "minimax_base_url": self.minimax_base_url_input.text().strip() or "https://api.minimax.io/v1",
+        }
+        try:
+            save_ui_settings(self.ui_settings)
+        except Exception as exc:  # noqa: BLE001
+            logging.exception("Unable to save UI settings")
+            QMessageBox.warning(self, "Paramètres", f"Enregistrement impossible : {exc}")
+            return
+        self.ai_analyzer = AIAnalyzer(self.ui_settings)
+        self._apply_ai_button_state()
+        self.update_ai_settings_status()
+        self.status_label.setText("Paramètres enregistrés.")
+
     def set_busy(self, busy: bool, message: str = "") -> None:
         self.is_busy = busy
         for widget in (
@@ -789,6 +895,14 @@ class MainWindow(QMainWindow):
             self.action_plan_button,
             self.copy_plan_button,
             self.open_reports_button,
+            self.save_settings_button,
+            self.open_data_button,
+            self.open_logs_button,
+            self.ai_provider_combo,
+            self.openai_model_input,
+            self.openai_base_url_input,
+            self.minimax_model_input,
+            self.minimax_base_url_input,
             self.select_high_button,
             self.select_review_button,
             self.clear_checks_button,
@@ -1346,16 +1460,19 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Plan d'action copié dans le presse-papiers.")
 
     def open_reports_folder(self) -> None:
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        self.open_folder(REPORTS_DIR)
+
+    def open_folder(self, path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
         try:
             if sys.platform == "win32":
-                os.startfile(REPORTS_DIR)  # type: ignore[attr-defined]
+                os.startfile(path)  # type: ignore[attr-defined]
             elif sys.platform == "darwin":
-                subprocess.run(["open", str(REPORTS_DIR)], check=False)
+                subprocess.run(["open", str(path)], check=False)
             else:
-                subprocess.run(["xdg-open", str(REPORTS_DIR)], check=False)
+                subprocess.run(["xdg-open", str(path)], check=False)
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, "Dossier rapports", f"Ouverture impossible : {exc}")
+            QMessageBox.warning(self, "Dossier", f"Ouverture impossible : {exc}")
 
     def show_scan_history(self) -> None:
         scans = self.db.recent_scans(limit=20)
