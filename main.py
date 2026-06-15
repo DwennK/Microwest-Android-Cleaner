@@ -53,6 +53,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 LOG_DIR = PROJECT_DIR / "logs"
 REPORTS_DIR = PROJECT_DIR / "reports"
 SETTINGS_PATH = PROJECT_DIR / "data" / "ui_settings.json"
+ENV_PATH = PROJECT_DIR / ".env"
 
 
 def setup_logging() -> None:
@@ -81,6 +82,22 @@ def load_ui_settings() -> dict[str, Any]:
 def save_ui_settings(settings: dict[str, Any]) -> None:
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_PATH.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def save_env_value(key: str, value: str) -> None:
+    lines = ENV_PATH.read_text(encoding="utf-8").splitlines() if ENV_PATH.exists() else []
+    output: list[str] = []
+    replaced = False
+    for line in lines:
+        if line.startswith(f"{key}="):
+            output.append(f"{key}={value}")
+            replaced = True
+        else:
+            output.append(line)
+    if not replaced:
+        output.append(f"{key}={value}")
+    ENV_PATH.write_text("\n".join(output).rstrip() + "\n", encoding="utf-8")
+    os.environ[key] = value
 
 
 def portable_runtime_checks() -> list[tuple[str, str, str]]:
@@ -731,24 +748,39 @@ class MainWindow(QMainWindow):
         self.minimax_base_url_input = QLineEdit(
             str(self.ui_settings.get("minimax_base_url") or "https://api.minimax.io/v1")
         )
+        self.ai_api_key_input = QLineEdit()
+        self.ai_api_key_input.setEchoMode(QLineEdit.Password)
         self.ai_key_status_label = QLabel("")
         self.ai_key_status_label.setObjectName("Muted")
+        openai_model_label = QLabel("Modèle OpenAI")
+        openai_base_url_label = QLabel("Base URL OpenAI")
+        minimax_model_label = QLabel("Modèle MiniMax")
+        minimax_base_url_label = QLabel("Base URL MiniMax")
+        self.openai_settings_widgets = [openai_model_label, self.openai_model_input, openai_base_url_label, self.openai_base_url_input]
+        self.minimax_settings_widgets = [
+            minimax_model_label,
+            self.minimax_model_input,
+            minimax_base_url_label,
+            self.minimax_base_url_input,
+        ]
         ai_layout.addWidget(QLabel("Provider"), 0, 0)
         ai_layout.addWidget(self.ai_provider_combo, 0, 1)
         ai_layout.addWidget(self.ai_key_status_label, 0, 2)
-        ai_layout.addWidget(QLabel("Modèle OpenAI"), 1, 0)
-        ai_layout.addWidget(self.openai_model_input, 1, 1, 1, 2)
-        ai_layout.addWidget(QLabel("Base URL OpenAI"), 2, 0)
-        ai_layout.addWidget(self.openai_base_url_input, 2, 1, 1, 2)
-        ai_layout.addWidget(QLabel("Modèle MiniMax"), 3, 0)
-        ai_layout.addWidget(self.minimax_model_input, 3, 1, 1, 2)
-        ai_layout.addWidget(QLabel("Base URL MiniMax"), 4, 0)
-        ai_layout.addWidget(self.minimax_base_url_input, 4, 1, 1, 2)
-        ai_layout.addWidget(self.save_settings_button, 5, 1)
-        ai_hint = QLabel("Les clés API restent dans .env : OPENAI_API_KEY ou MINIMAX_API_KEY.")
+        ai_layout.addWidget(QLabel("Clé API"), 1, 0)
+        ai_layout.addWidget(self.ai_api_key_input, 1, 1, 1, 2)
+        ai_layout.addWidget(openai_model_label, 2, 0)
+        ai_layout.addWidget(self.openai_model_input, 2, 1, 1, 2)
+        ai_layout.addWidget(openai_base_url_label, 3, 0)
+        ai_layout.addWidget(self.openai_base_url_input, 3, 1, 1, 2)
+        ai_layout.addWidget(minimax_model_label, 4, 0)
+        ai_layout.addWidget(self.minimax_model_input, 4, 1, 1, 2)
+        ai_layout.addWidget(minimax_base_url_label, 5, 0)
+        ai_layout.addWidget(self.minimax_base_url_input, 5, 1, 1, 2)
+        ai_layout.addWidget(self.save_settings_button, 6, 1)
+        ai_hint = QLabel("Collez une clé pour l'ajouter à .env. Laissez le champ vide pour conserver la clé existante.")
         ai_hint.setWordWrap(True)
         ai_hint.setObjectName("Muted")
-        ai_layout.addWidget(ai_hint, 6, 0, 1, 3)
+        ai_layout.addWidget(ai_hint, 7, 0, 1, 3)
         settings_layout.addWidget(ai_box)
 
         storage_box = QGroupBox("Stockage portable")
@@ -855,10 +887,19 @@ class MainWindow(QMainWindow):
         key_present = bool(os.getenv(key_name, "").strip())
         status = "clé détectée" if key_present else f"{key_name} absent"
         self.ai_key_status_label.setText(status)
+        self.ai_api_key_input.setPlaceholderText(f"Coller {key_name} ici")
+        self.ai_api_key_input.clear()
+        for widget in self.openai_settings_widgets:
+            widget.setVisible(provider == "openai")
+        for widget in self.minimax_settings_widgets:
+            widget.setVisible(provider == "minimax")
 
     def save_settings_from_ui(self) -> None:
+        provider = str(self.ai_provider_combo.currentData() or "openai")
+        api_key = self.ai_api_key_input.text().strip()
+        key_name = "MINIMAX_API_KEY" if provider == "minimax" else "OPENAI_API_KEY"
         self.ui_settings = {
-            "ai_provider": str(self.ai_provider_combo.currentData() or "openai"),
+            "ai_provider": provider,
             "openai_model": self.openai_model_input.text().strip() or "gpt-4.1-mini",
             "openai_base_url": self.openai_base_url_input.text().strip(),
             "minimax_model": self.minimax_model_input.text().strip() or "MiniMax-M3",
@@ -866,10 +907,13 @@ class MainWindow(QMainWindow):
         }
         try:
             save_ui_settings(self.ui_settings)
+            if api_key:
+                save_env_value(key_name, api_key)
         except Exception as exc:  # noqa: BLE001
             logging.exception("Unable to save UI settings")
             QMessageBox.warning(self, "Paramètres", f"Enregistrement impossible : {exc}")
             return
+        self.ai_api_key_input.clear()
         self.ai_analyzer = AIAnalyzer(self.ui_settings)
         self._apply_ai_button_state()
         self.update_ai_settings_status()
@@ -903,6 +947,7 @@ class MainWindow(QMainWindow):
             self.openai_base_url_input,
             self.minimax_model_input,
             self.minimax_base_url_input,
+            self.ai_api_key_input,
             self.select_high_button,
             self.select_review_button,
             self.clear_checks_button,
