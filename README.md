@@ -165,7 +165,7 @@ L'interface est organisée en onglets pour garder le tableau lisible même en pl
 - `Résultats` : tableau pleine largeur, recherche, filtres, sélection et actions de triage ;
 - `Détails` : fiche complète de l'application sélectionnée ;
 - `Exports` : rapports, CSV, plan d'action et historique ;
-- `Paramètres` : mode démo, choix du provider IA, clé API, modèle, base URL et accès aux dossiers portables.
+- `Paramètres` : mode démo, choix du provider IA, clé API, modèle, base URL, maintenance locale et accès aux dossiers portables.
 
 Flux recommandé :
 
@@ -214,7 +214,7 @@ Les notes technicien sont conservées dans la base SQLite portable et apparaisse
 
 Dans `Exports`, le bouton `Plan action` exporte un fichier texte dans `reports/` avec les apps à valider, les raisons principales et les commandes ADB exactes à n'utiliser qu'après validation humaine. `Copier plan` place le même plan dans le presse-papiers. `Ouvrir rapports` ouvre le dossier portable `reports/`.
 
-Dans `Paramètres`, le bouton `Mode démo` charge un faux téléphone et des apps fictives pour tester l'interface sans Android branché, puis ouvre `Résultats`. Le choix du provider IA masque automatiquement les champs de l'autre provider. Les boutons `Ouvrir dossier data` et `Ouvrir logs` ouvrent les dossiers portables correspondants. Le bouton `Historique` dans `Exports` affiche les derniers scans enregistrés dans la base SQLite portable.
+Dans `Paramètres`, le bouton `Mode démo` charge un faux téléphone et des apps fictives pour tester l'interface sans Android branché, puis ouvre `Résultats`. Le choix du provider IA masque automatiquement les champs de l'autre provider. Les boutons `Ouvrir dossier data`, `Ouvrir logs` et `Recharger blacklist/whitelist` regroupent la maintenance locale. Le bouton `Historique` dans `Exports` affiche les derniers scans enregistrés dans la base SQLite portable.
 
 ## Détection des apps suspectes
 
