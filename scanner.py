@@ -4,12 +4,11 @@ import logging
 import re
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from adb_client import ADBClient
 from apk_metadata import ApkMetadataExtractor
-
 
 LOGGER = logging.getLogger(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -92,19 +91,36 @@ class AppScanner:
         apps: list[AppInfo] = []
 
         for package, installer in packages.items():
-            app = AppInfo(package_name=package, installer=installer, is_system_app=include_system)
-            try:
-                if launcher_packages is not None:
-                    app.has_launcher_entry = package in launcher_packages
-                dumpsys = self.adb_client.dumpsys_package(serial, package)
-                self._enrich_from_dumpsys(app, dumpsys)
-                self._enrich_from_apk(serial, app)
-                self._finalize_audits(app)
-            except Exception as exc:  # noqa: BLE001 - UI should show partial scan, not abort all.
-                LOGGER.exception("Metadata enrichment failed for %s", package)
-                app.dumpsys_error = str(exc)
+            app = self.scan_package(
+                serial=serial,
+                package=package,
+                installer=installer,
+                include_system=include_system,
+                launcher_packages=launcher_packages,
+            )
             apps.append(app)
         return apps
+
+    def scan_package(
+        self,
+        serial: str,
+        package: str,
+        installer: str = "",
+        include_system: bool = False,
+        launcher_packages: set[str] | None = None,
+    ) -> AppInfo:
+        app = AppInfo(package_name=package, installer=installer, is_system_app=include_system)
+        try:
+            if launcher_packages is not None:
+                app.has_launcher_entry = package in launcher_packages
+            dumpsys = self.adb_client.dumpsys_package(serial, package)
+            self._enrich_from_dumpsys(app, dumpsys)
+            self._enrich_from_apk(serial, app)
+            self._finalize_audits(app)
+        except Exception as exc:  # noqa: BLE001 - UI should show partial scan, not abort all.
+            LOGGER.exception("Metadata enrichment failed for %s", package)
+            app.dumpsys_error = str(exc)
+        return app
 
     def _enrich_from_dumpsys(self, app: AppInfo, dumpsys: str) -> None:
         app.app_label = self._extract_label(app.package_name, dumpsys)
@@ -229,8 +245,8 @@ def installed_recently(install_date: str, days: int = 10) -> bool:
         try:
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
             if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
-            return (datetime.now(timezone.utc) - parsed).days <= days
+                parsed = parsed.replace(tzinfo=UTC)
+            return (datetime.now(UTC) - parsed).days <= days
         except ValueError:
             continue
     return False

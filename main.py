@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import logging
-import platform
 import csv
 import json
+import logging
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -40,14 +39,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from adb_client import ADBClient, ADBError, ADBDevice, ADBNotFoundError, DeviceInfo, parse_devices_l
+from adb_client import ADBClient, ADBDevice, ADBError, ADBNotFoundError, DeviceInfo, parse_devices_l
 from ai_analyzer import AIAnalyzer, AIResult, ai_payload_from_row
 from apk_metadata import ApkMetadataExtractor
 from database import ReputationDatabase
 from report_generator import export_html_report
 from risk_rules import evaluate_app
-from scanner import AppInfo, AppScanner
-
+from scan_workflow import run_scan
+from scanner import AppInfo
+from workflow_helpers import (
+    build_action_plan,
+    hidden_summary,
+    is_hidden_or_low_visibility,
+    is_sideloaded,
+    launcher_text,
+    notification_summary,
+    permission_matches,
+    priority_text,
+    scan_summary,
+)
 
 PROJECT_DIR = Path(__file__).resolve().parent
 LOG_DIR = PROJECT_DIR / "logs"
@@ -245,43 +255,21 @@ class ScanWorker(QThread):
 
     def run(self) -> None:
         try:
-            adb = ADBClient()
-            db = ReputationDatabase()
-            scanner = AppScanner(adb)
-            packages = adb.list_packages(self.serial, include_system=self.include_system)
-            launcher_packages = adb.list_launcher_packages(self.serial)
-            rows: list[dict[str, Any]] = []
-            errors: list[str] = []
-            total = len(packages)
-            for index, (package, installer) in enumerate(packages.items(), start=1):
-                if self.cancel_requested or self.isInterruptionRequested():
-                    break
-                self.progress.emit(index, total, package)
-                app = AppInfo(package_name=package, installer=installer, is_system_app=self.include_system)
-                try:
-                    if launcher_packages is not None:
-                        app.has_launcher_entry = package in launcher_packages
-                    dumpsys = adb.dumpsys_package(self.serial, package)
-                    scanner._enrich_from_dumpsys(app, dumpsys)
-                    scanner._enrich_from_apk(self.serial, app)
-                    scanner._finalize_audits(app)
-                except Exception as exc:  # noqa: BLE001 - partial scan should continue.
-                    logging.exception("Metadata enrichment failed for %s", package)
-                    app.dumpsys_error = str(exc)
-                    errors.append(f"{package}: {exc}")
-                risk = evaluate_app(app, db.reputation_for(app.package_name))
-                rows.append({"app": app, "risk": risk, "ai": None, "ai_text": "", "note": db.note_for(app.package_name)})
-            rows.sort(key=lambda item: item["risk"].score, reverse=True)
-            suspicious_count = len([r for r in rows if r["risk"].score >= 60 and r["risk"].recommended_action != "do_not_touch"])
-            if rows:
-                db.record_scan(
-                    datetime.now().isoformat(timespec="seconds"),
-                    self.device.model,
-                    self.device.android_version,
-                    len(rows),
-                    suspicious_count,
-                )
-            self.succeeded.emit({"rows": rows, "errors": errors, "cancelled": self.cancel_requested, "total": total})
+            result = run_scan(
+                self.serial,
+                self.include_system,
+                self.device,
+                progress=lambda current, total, package: self.progress.emit(current, total, package),
+                should_cancel=lambda: self.cancel_requested or self.isInterruptionRequested(),
+            )
+            self.succeeded.emit(
+                {
+                    "rows": result.rows,
+                    "errors": result.errors,
+                    "cancelled": result.cancelled,
+                    "total": result.total,
+                }
+            )
         except Exception as exc:  # noqa: BLE001
             logging.exception("Scan failed")
             self.failed.emit(f"Scan impossible : {exc}")
@@ -387,7 +375,7 @@ def build_app_details_text(row: dict[str, Any]) -> str:
         f"Catégorie : {risk.category}\n"
         f"Action proposée : {risk.recommended_action}\n"
         f"Raisons :\n- " + "\n- ".join(risk.reasons) + "\n\n"
-        f"Permissions sensibles :\n- "
+        "Permissions sensibles :\n- "
         + ("\n- ".join(app.sensitive_permissions) if app.sensitive_permissions else "Aucune détectée")
         + f"\n\nCommande ADB prévue :\n{command}\n\n"
         f"Commande paramètres app :\n{settings_command}\n\n"
@@ -1734,143 +1722,6 @@ class MainWindow(QMainWindow):
     def on_worker_failed(self, message: str) -> None:
         self.status_label.setText("Erreur")
         QMessageBox.critical(self, "Erreur", message)
-
-
-def launcher_text(app: AppInfo) -> str:
-    if app.has_launcher_entry is True:
-        return "oui"
-    if app.has_launcher_entry is False:
-        return "non"
-    return "non vérifié"
-
-
-def is_hidden_or_low_visibility(app: AppInfo) -> bool:
-    return app.has_launcher_entry is False or "Nom très générique" in app.hidden_audit
-
-
-def is_sideloaded(app: AppInfo) -> bool:
-    return not app.installer or app.installer not in {"com.android.vending", "com.sec.android.app.samsungapps"}
-
-
-def priority_text(row: dict[str, Any]) -> str:
-    app: AppInfo = row["app"]
-    risk = row["risk"]
-    if risk.recommended_action == "do_not_touch" or app.is_system_app:
-        return "Protégée"
-    if risk.score >= 80:
-        return "Urgent"
-    if risk.score >= 60:
-        return "À traiter"
-    if risk.recommended_action == "review" or risk.score >= 30:
-        return "À vérifier"
-    return "OK"
-
-
-def scan_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
-    return {
-        "total": len(rows),
-        "high": len(
-            [
-                row
-                for row in rows
-                if row["risk"].score >= 60
-                and row["risk"].recommended_action != "do_not_touch"
-                and not row["app"].is_system_app
-            ]
-        ),
-        "review": len([row for row in rows if row["risk"].recommended_action == "review"]),
-        "hidden": len([row for row in rows if is_hidden_or_low_visibility(row["app"])]),
-        "sideload": len([row for row in rows if is_sideloaded(row["app"])]),
-    }
-
-
-def build_action_plan(device: DeviceInfo, rows: list[dict[str, Any]], selected_rows: list[dict[str, Any]] | None = None) -> str:
-    selected_rows = selected_rows or []
-    candidates = selected_rows or [
-        row
-        for row in rows
-        if row["risk"].score >= 60 and row["risk"].recommended_action != "do_not_touch" and not row["app"].is_system_app
-    ]
-    review_rows = [row for row in rows if row["risk"].recommended_action == "review" and row not in candidates]
-    summary = scan_summary(rows)
-    lines = [
-        "Microwest Android Cleaner - Plan d'action",
-        f"Date : {datetime.now().strftime('%d.%m.%Y %H:%M')}",
-        f"Téléphone : {device.manufacturer} {device.model}".strip(),
-        f"Android : {device.android_version or '-'}",
-        f"ADB : {device.serial or '-'}",
-        "",
-        "Synthèse",
-        f"- Apps scannées : {summary['total']}",
-        f"- À traiter : {summary['high']}",
-        f"- À vérifier : {summary['review']}",
-        f"- Apps cachées/faible visibilité : {summary['hidden']}",
-        f"- Sideload/installateur inconnu : {summary['sideload']}",
-        "",
-        "Applications proposées pour validation humaine",
-    ]
-    if not candidates:
-        lines.append("- Aucune application à traiter automatiquement sélectionnée.")
-    for row in candidates:
-        app: AppInfo = row["app"]
-        risk = row["risk"]
-        lines.extend(
-            [
-                f"- {app.display_name()} ({app.package_name})",
-                f"  Score : {risk.score} - {risk.category}",
-                f"  Raisons : {'; '.join(risk.reasons[:4])}",
-                f"  Commande après validation : adb shell pm uninstall --user 0 {app.package_name}",
-            ]
-        )
-        if row.get("note"):
-            lines.append(f"  Note : {row['note']}")
-    lines.extend(["", "Applications à vérifier manuellement"])
-    if not review_rows:
-        lines.append("- Aucune.")
-    for row in review_rows[:20]:
-        app = row["app"]
-        risk = row["risk"]
-        lines.append(f"- {app.display_name()} ({app.package_name}) - score {risk.score} - {'; '.join(risk.reasons[:3])}")
-    lines.extend(
-        [
-            "",
-            "Rappel sécurité",
-            "- Ne pas désinstaller sans validation humaine.",
-            "- Ne pas utiliser adb root, su, rm ou commandes destructrices.",
-            "- Vérifier l'écran du téléphone si ADB passe en unauthorized/offline.",
-        ]
-    )
-    return "\n".join(lines)
-
-
-def permission_matches(app: AppInfo, query: str) -> bool:
-    haystack = " ".join(app.sensitive_permissions + app.notification_audit + app.hidden_audit).upper()
-    flags = {
-        "ACCESSIBILITY": app.has_accessibility,
-        "NOTIFICATION": app.has_notification_listener or app.requests_post_notifications,
-        "OVERLAY": app.has_overlay,
-        "DEVICE_ADMIN": app.has_device_admin,
-        "VPN": app.has_vpn_service,
-    }
-    if query in flags:
-        return flags[query] or query in haystack
-    return query in haystack
-
-
-def hidden_summary(app: AppInfo) -> str:
-    if app.has_launcher_entry is False:
-        return "Sans launcher"
-    if "Nom très générique" in app.hidden_audit:
-        return "Nom générique"
-    if app.hidden_audit:
-        return "À vérifier"
-    return "-"
-
-
-def notification_summary(app: AppInfo) -> str:
-    if not app.notification_audit:
-        return "-"
-    return ", ".join(app.notification_audit[:2])
 
 
 def format_diagnostic_report(report: dict[str, Any]) -> str:

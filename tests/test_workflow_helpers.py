@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 
 from adb_client import DeviceInfo
-from main import build_action_plan, priority_text, scan_summary
 from risk_rules import RiskResult
 from scanner import AppInfo
+from workflow_helpers import build_action_plan, priority_text, scan_summary
 
 
 def row(package: str, score: int, action: str, *, installer: str = "", hidden: bool = False) -> dict:
