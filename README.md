@@ -99,6 +99,10 @@ Options utiles :
 
 Le résultat est écrit dans `dist/`. Les dossiers `build/`, `dist/` et `packaging/generated/` ne sont pas versionnés.
 
+## Intégration continue
+
+Le workflow GitHub Actions `.github/workflows/tests.yml` installe `requirements-dev.txt`, lance `ruff` puis `pytest` sur Python 3.12 à chaque push et pull request.
+
 ## Installer ADB
 
 Option 1 : placer le binaire ADB compatible avec votre système dans :
