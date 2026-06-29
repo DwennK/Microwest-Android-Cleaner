@@ -9,7 +9,6 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-
 LOGGER = logging.getLogger(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
 
@@ -82,9 +81,8 @@ class ApkMetadataExtractor:
 
         output_path = cache_dir / f"{safe_filename(package_name)}{suffix}"
         try:
-            with zipfile.ZipFile(apk_path) as archive:
-                with archive.open(icon_path) as source:
-                    output_path.write_bytes(source.read())
+            with zipfile.ZipFile(apk_path) as archive, archive.open(icon_path) as source:
+                output_path.write_bytes(source.read())
         except (KeyError, OSError, zipfile.BadZipFile):
             LOGGER.debug("Unable to extract icon %s from %s", icon_path, apk_path)
             return None

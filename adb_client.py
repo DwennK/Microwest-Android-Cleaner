@@ -8,7 +8,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-
 LOGGER = logging.getLogger(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
 

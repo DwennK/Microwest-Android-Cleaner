@@ -56,6 +56,20 @@ Sur Windows :
 run_windows.bat
 ```
 
+## Développement
+
+Le projet cible Python 3.12. Pour lancer la suite locale :
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+python -m pytest -q
+python -m ruff check .
+```
+
+Les fichiers produits à l'exécution restent locaux et ne doivent pas être versionnés : base SQLite portable, logs, rapports exportés et cache d'icônes. Les dossiers conservent seulement leurs `.gitkeep`.
+
 ## Installer ADB
 
 Option 1 : placer le binaire ADB compatible avec votre système dans :

@@ -5,7 +5,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-
 PROJECT_DIR = Path(__file__).resolve().parent
 REPORTS_DIR = PROJECT_DIR / "reports"
 
