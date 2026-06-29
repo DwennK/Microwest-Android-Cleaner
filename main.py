@@ -13,28 +13,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QLockFile, QSize, Qt, QThread, QTimer, Signal, qVersion
+from PySide6.QtCore import QLockFile, Qt, QThread, QTimer, Signal, qVersion
 from PySide6.QtGui import QAction, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
-    QComboBox,
-    QGridLayout,
-    QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QInputDialog,
     QLabel,
-    QLineEdit,
     QMainWindow,
     QMenu,
     QMessageBox,
-    QProgressBar,
-    QPushButton,
-    QTableWidget,
     QTableWidgetItem,
     QTabWidget,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -42,11 +32,18 @@ from PySide6.QtWidgets import (
 from adb_client import ADBClient, ADBDevice, ADBError, ADBNotFoundError, DeviceInfo, parse_devices_l
 from ai_analyzer import AIAnalyzer, AIResult, ai_payload_from_row
 from apk_metadata import ApkMetadataExtractor
+from app_style import APP_STYLESHEET
+from connection_tab import ConnectionTab
 from database import ReputationDatabase
+from details_tab import DetailsTab
+from exports_tab import ExportsTab
 from report_generator import export_html_report
+from results_tab import ResultsTab
 from risk_rules import evaluate_app
+from scan_tab import ScanTab
 from scan_workflow import run_scan
 from scanner import AppInfo
+from settings_tab import SettingsTab
 from workflow_helpers import (
     build_action_plan,
     hidden_summary,
@@ -384,6 +381,29 @@ def build_app_details_text(row: dict[str, Any]) -> str:
     )
 
 
+def display_action(action: str) -> str:
+    return {
+        "keep": "Garder",
+        "review": "Vérifier",
+        "suggest_uninstall": "À valider",
+        "do_not_touch": "Ne pas toucher",
+    }.get(action, action)
+
+
+def display_category(category: str) -> str:
+    return {
+        "do_not_touch_system": "Système protégé",
+        "trusted_official_review": "Officielle à vérifier",
+        "trusted_official": "Officielle",
+        "safe": "Sûre",
+        "probably_safe": "Probablement sûre",
+        "unknown_review_manually": "À vérifier",
+        "spyware_suspect": "Suspect spyware",
+        "scam_suspect": "Suspect arnaque",
+        "adware_suspect": "Suspect pub",
+    }.get(category, category)
+
+
 class MainWindow(QMainWindow):
     COLUMNS = [
         "",
@@ -424,6 +444,7 @@ class MainWindow(QMainWindow):
         self.last_diagnostic_text = ""
         self.last_devices_signature = ""
         self.is_busy = False
+        self.quick_scan_pending = False
         self._build_ui()
         self._apply_ai_button_state()
         self.device_refresh_timer = QTimer(self)
@@ -437,367 +458,70 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(18, 14, 18, 18)
         main_layout.setSpacing(10)
 
-        header_layout = QHBoxLayout()
-        title_block = QVBoxLayout()
-        title_block.setSpacing(2)
-        title = QLabel("Microwest Android Cleaner")
-        title.setObjectName("Title")
-        subtitle = QLabel("Diagnostic Android / Samsung")
-        subtitle.setObjectName("Subtitle")
-        title_block.addWidget(title)
-        title_block.addWidget(subtitle)
-        self.status_label = QLabel("Aucun appareil détecté")
-        self.status_label.setObjectName("StatusPill")
-        self.status_label.setMinimumWidth(320)
-        self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        header_layout.addLayout(title_block, 1)
-        header_layout.addWidget(self.status_label)
-        main_layout.addLayout(header_layout)
-
-        self.model_label = QLabel("-")
-        self.android_label = QLabel("-")
-        self.serial_label = QLabel("-")
-        self.device_combo = QComboBox()
-        self.device_combo.addItem("Auto", "")
-
-        self.detect_button = QPushButton("Détecter téléphone")
-        self.adb_diagnostic_button = QPushButton("Diagnostic ADB")
-        self.adb_repair_button = QPushButton("Réparer connexion")
-        self.adb_daemon_button = QPushButton("Redémarrer ADB")
-        self.adb_daemon_button.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.scan_button = QPushButton("Scanner les apps")
-        self.cancel_scan_button = QPushButton("Annuler scan")
-        self.ai_button = QPushButton("Analyser avec IA")
-        self.open_settings_button = QPushButton("Paramètres app")
-        self.uninstall_button = QPushButton("Désinstaller sélection")
-        self.report_button = QPushButton("Exporter rapport")
-        self.csv_button = QPushButton("Exporter CSV")
-        self.copy_diagnostic_button = QPushButton("Copier diagnostic")
-        self.export_diagnostic_button = QPushButton("Exporter diagnostic")
-        self.history_button = QPushButton("Historique")
-        self.demo_button = QPushButton("Mode démo")
-        self.action_plan_button = QPushButton("Plan action")
-        self.copy_plan_button = QPushButton("Copier plan")
-        self.open_reports_button = QPushButton("Ouvrir rapports")
-        self.reload_button = QPushButton("Recharger blacklist/whitelist")
-        self.save_settings_button = QPushButton("Enregistrer paramètres")
-        self.open_data_button = QPushButton("Ouvrir dossier data")
-        self.open_logs_button = QPushButton("Ouvrir logs")
-        for button in (self.detect_button, self.scan_button, self.save_settings_button):
-            button.setObjectName("PrimaryButton")
-        self.uninstall_button.setObjectName("DangerButton")
-
-        self.cancel_scan_button.setEnabled(False)
-        self.copy_diagnostic_button.setEnabled(False)
-        self.export_diagnostic_button.setEnabled(False)
+        self._build_header(main_layout)
+        self._build_workflow_strip(main_layout)
 
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.tabs.setObjectName("WorkspaceTabs")
         main_layout.addWidget(self.tabs, 1)
 
-        connection_tab = QWidget()
-        connection_layout = QVBoxLayout(connection_tab)
-        connection_layout.setContentsMargins(12, 12, 12, 12)
-        connection_layout.setSpacing(12)
-
-        phone_box = QGroupBox("Téléphone")
-        phone_layout = QGridLayout(phone_box)
-        phone_layout.setHorizontalSpacing(14)
-        phone_layout.setVerticalSpacing(8)
-        phone_layout.addWidget(QLabel("Modèle"), 0, 0)
-        phone_layout.addWidget(self.model_label, 0, 1)
-        phone_layout.addWidget(QLabel("Android"), 0, 2)
-        phone_layout.addWidget(self.android_label, 0, 3)
-        phone_layout.addWidget(QLabel("ADB"), 1, 0)
-        phone_layout.addWidget(self.serial_label, 1, 1)
-        phone_layout.addWidget(QLabel("Appareil"), 1, 2)
-        phone_layout.addWidget(self.device_combo, 1, 3)
-        phone_layout.setColumnStretch(1, 1)
-        phone_layout.setColumnStretch(3, 2)
-        connection_layout.addWidget(phone_box)
-
-        connection_actions = QHBoxLayout()
-        for button in (
-            self.detect_button,
-            self.adb_repair_button,
-            self.adb_diagnostic_button,
-            self.adb_daemon_button,
-        ):
-            connection_actions.addWidget(button)
-        connection_actions.addStretch(1)
-        connection_layout.addLayout(connection_actions)
-
-        diagnostic_actions = QHBoxLayout()
-        for button in (self.copy_diagnostic_button, self.export_diagnostic_button):
-            diagnostic_actions.addWidget(button)
-        diagnostic_actions.addStretch(1)
-        connection_layout.addLayout(diagnostic_actions)
-
-        connection_hint = QLabel(
-            "Connexion ADB, autorisation RSA, diagnostic local et réparation du daemon. "
-            "La liste des appareils se met à jour automatiquement quand l'app est inactive."
-        )
-        connection_hint.setWordWrap(True)
-        connection_hint.setObjectName("Muted")
-        connection_layout.addWidget(connection_hint)
-        connection_layout.addStretch(1)
-
-        scan_tab = QWidget()
-        scan_layout = QVBoxLayout(scan_tab)
-        scan_layout.setContentsMargins(12, 12, 12, 12)
-        scan_layout.setSpacing(14)
-
-        self.scan_progress = QProgressBar()
-        self.scan_progress.setRange(0, 100)
-        self.scan_progress.setValue(0)
-        self.scan_progress.setTextVisible(True)
-        self.progress_label = QLabel("Prêt")
-        self.summary_total_label = QLabel("Apps: 0")
-        self.summary_high_label = QLabel("À traiter: 0")
-        self.summary_review_label = QLabel("À vérifier: 0")
-        self.summary_hidden_label = QLabel("Cachées: 0")
-        self.summary_sideload_label = QLabel("Sideload: 0")
-        self.summary_selected_label = QLabel("Cochées: 0")
-        self.include_system_checkbox = QCheckBox("Afficher apps système")
-        self.hide_safe_checkbox = QCheckBox("Masquer apps sûres")
-        self.hidden_apps_checkbox = QCheckBox("Apps cachées")
-        self.notification_audit_checkbox = QCheckBox("Audit notifications")
-        self.sideload_checkbox = QCheckBox("Sideload")
-        self.score_filter = QComboBox()
-        self.score_filter.addItem("Score min: 0", 0)
-        self.score_filter.addItem("Score min: 30", 30)
-        self.score_filter.addItem("Score min: 60", 60)
-        self.permission_filter = QComboBox()
-        self.permission_filter.addItem("Toutes permissions", "")
-        for permission in ("SMS", "CONTACTS", "CALL", "ACCESSIBILITY", "NOTIFICATION", "OVERLAY", "DEVICE_ADMIN", "VPN"):
-            self.permission_filter.addItem(permission, permission)
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Rechercher nom, package, installateur...")
-        self.select_high_button = QPushButton("Cocher à traiter")
-        self.select_review_button = QPushButton("Cocher review")
-        self.clear_checks_button = QPushButton("Tout décocher")
-        self.note_button = QPushButton("Note sélection")
-
-        scan_controls = QGroupBox("Scan")
-        scan_controls_layout = QGridLayout(scan_controls)
-        scan_controls_layout.setHorizontalSpacing(12)
-        scan_controls_layout.setVerticalSpacing(10)
-        scan_controls_layout.addWidget(self.scan_button, 0, 0)
-        scan_controls_layout.addWidget(self.cancel_scan_button, 0, 1)
-        scan_controls_layout.addWidget(self.ai_button, 0, 2)
-        scan_controls_layout.addWidget(self.include_system_checkbox, 1, 0, 1, 3)
-        scan_controls_layout.addWidget(self.scan_progress, 2, 0, 1, 3)
-        scan_controls_layout.addWidget(self.progress_label, 3, 0, 1, 3)
-        scan_layout.addWidget(scan_controls)
-
-        scan_hint = QLabel(
-            "Lancez le scan ici. Quand il se termine, l'app ouvre automatiquement l'onglet Résultats."
-        )
-        scan_hint.setObjectName("Muted")
-        scan_hint.setWordWrap(True)
-        scan_layout.addWidget(scan_hint)
-        scan_layout.addStretch(1)
-
-        results_tab = QWidget()
-        results_layout = QVBoxLayout(results_tab)
-        results_layout.setContentsMargins(12, 12, 12, 12)
-        results_layout.setSpacing(10)
-
-        summary_strip = QHBoxLayout()
-        for index, label in enumerate(
-            (
-                self.summary_total_label,
-                self.summary_high_label,
-                self.summary_review_label,
-                self.summary_hidden_label,
-                self.summary_sideload_label,
-                self.summary_selected_label,
-            )
-        ):
-            label.setObjectName("MetricLabel")
-            summary_strip.addWidget(label)
-            if index < 5:
-                summary_strip.addSpacing(10)
-        summary_strip.addStretch(1)
-        results_layout.addLayout(summary_strip)
-
-        filters_row = QHBoxLayout()
-        filters_row.addWidget(self.search_input, 1)
-        filters_row.addWidget(self.score_filter)
-        filters_row.addWidget(self.permission_filter)
-        results_layout.addLayout(filters_row)
-
-        flags_row = QHBoxLayout()
-        for checkbox in (
-            self.hide_safe_checkbox,
-            self.hidden_apps_checkbox,
-            self.notification_audit_checkbox,
-            self.sideload_checkbox,
-        ):
-            flags_row.addWidget(checkbox)
-        flags_row.addStretch(1)
-        results_layout.addLayout(flags_row)
-
-        selection_toolbar = QHBoxLayout()
-        for button in (
-            self.select_high_button,
-            self.select_review_button,
-            self.clear_checks_button,
-            self.note_button,
-            self.open_settings_button,
-            self.uninstall_button,
-        ):
-            selection_toolbar.addWidget(button)
-        selection_toolbar.addStretch(1)
-        results_layout.addLayout(selection_toolbar)
-
-        self.table = QTableWidget(0, len(self.COLUMNS))
-        self.table.setHorizontalHeaderLabels(self.COLUMNS)
-        self.table.setSortingEnabled(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.table.setIconSize(QSize(28, 28))
-        self.table.setAlternatingRowColors(True)
-        self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(32)
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.Interactive)
-        header.setSectionResizeMode(self.COL_PACKAGE, QHeaderView.Stretch)
-        self.table.setColumnWidth(0, 36)
-        self.table.setColumnWidth(self.COL_PRIORITY, 96)
-        self.table.setColumnWidth(self.COL_SCORE, 62)
-        self.table.setColumnWidth(3, 150)
-        self.table.setColumnWidth(4, 132)
-        self.table.setColumnWidth(5, 220)
-        self.table.setColumnWidth(self.COL_PACKAGE, 360)
-        self.table.setColumnWidth(7, 220)
-        self.table.setColumnWidth(8, 120)
-        self.table.setColumnWidth(9, 160)
-        self.table.setColumnWidth(self.COL_NOTE, 180)
-        self.table.setColumnWidth(12, 220)
-        for column in (3, 7, 8, 9, self.COL_NOTE, self.COL_REASONS, 12):
-            self.table.setColumnHidden(column, True)
-
-        results_layout.addWidget(self.table, 1)
-
-        details_tab = QWidget()
-        details_layout = QVBoxLayout(details_tab)
-        details_layout.setContentsMargins(12, 12, 12, 12)
-        details_layout.setSpacing(10)
-        self.details_title_label = QLabel("Détails sélection")
-        self.details_title_label.setObjectName("SectionTitle")
-        details_layout.addWidget(self.details_title_label)
-        self.details_text = QTextEdit()
-        self.details_text.setReadOnly(True)
-        self.details_text.setPlaceholderText("Sélectionnez une application dans Résultats pour afficher ses détails.")
-        details_layout.addWidget(self.details_text, 1)
-
-        exports_tab = QWidget()
-        exports_layout = QVBoxLayout(exports_tab)
-        exports_layout.setContentsMargins(12, 12, 12, 12)
-        exports_layout.setSpacing(12)
-
-        report_box = QGroupBox("Rapports et exports")
-        report_layout = QGridLayout(report_box)
-        report_layout.addWidget(self.report_button, 0, 0)
-        report_layout.addWidget(self.csv_button, 0, 1)
-        report_layout.addWidget(self.action_plan_button, 1, 0)
-        report_layout.addWidget(self.copy_plan_button, 1, 1)
-        report_layout.addWidget(self.open_reports_button, 2, 0)
-        report_layout.addWidget(self.history_button, 2, 1)
-        exports_layout.addWidget(report_box)
-
-        exports_layout.addStretch(1)
-
-        settings_tab = QWidget()
-        settings_layout = QVBoxLayout(settings_tab)
-        settings_layout.setContentsMargins(12, 12, 12, 12)
-        settings_layout.setSpacing(12)
-
-        demo_box = QGroupBox("Démo")
-        demo_layout = QGridLayout(demo_box)
-        demo_layout.addWidget(self.demo_button, 0, 0)
-        demo_help = QLabel("Charge un faux téléphone pour tester les filtres, rapports et actions sans Android branché.")
-        demo_help.setWordWrap(True)
-        demo_help.setObjectName("Muted")
-        demo_layout.addWidget(demo_help, 0, 1)
-        settings_layout.addWidget(demo_box)
-
-        ai_box = QGroupBox("Analyse IA")
-        ai_layout = QGridLayout(ai_box)
-        ai_layout.setHorizontalSpacing(12)
-        ai_layout.setVerticalSpacing(8)
-        self.ai_provider_combo = QComboBox()
-        self.ai_provider_combo.addItem("OpenAI", "openai")
-        self.ai_provider_combo.addItem("MiniMax", "minimax")
-        provider_index = self.ai_provider_combo.findData(self.ai_analyzer.provider)
-        self.ai_provider_combo.setCurrentIndex(max(0, provider_index))
-        self.openai_model_input = QLineEdit(str(self.ui_settings.get("openai_model") or "gpt-4.1-mini"))
-        self.openai_base_url_input = QLineEdit(str(self.ui_settings.get("openai_base_url") or ""))
-        self.minimax_model_input = QLineEdit(str(self.ui_settings.get("minimax_model") or "MiniMax-M3"))
-        self.minimax_base_url_input = QLineEdit(
-            str(self.ui_settings.get("minimax_base_url") or "https://api.minimax.io/v1")
-        )
-        self.ai_api_key_input = QLineEdit()
-        self.ai_api_key_input.setEchoMode(QLineEdit.Password)
-        self.ai_key_status_label = QLabel("")
-        self.ai_key_status_label.setObjectName("Muted")
-        openai_model_label = QLabel("Modèle OpenAI")
-        openai_base_url_label = QLabel("Base URL OpenAI")
-        minimax_model_label = QLabel("Modèle MiniMax")
-        minimax_base_url_label = QLabel("Base URL MiniMax")
-        self.openai_settings_widgets = [openai_model_label, self.openai_model_input, openai_base_url_label, self.openai_base_url_input]
-        self.minimax_settings_widgets = [
-            minimax_model_label,
-            self.minimax_model_input,
-            minimax_base_url_label,
-            self.minimax_base_url_input,
-        ]
-        ai_layout.setColumnMinimumWidth(0, 160)
-        ai_layout.setColumnStretch(1, 1)
-        ai_layout.addWidget(QLabel("Provider"), 0, 0)
-        ai_layout.addWidget(self.ai_provider_combo, 0, 1)
-        ai_layout.addWidget(self.ai_key_status_label, 0, 2)
-        ai_layout.addWidget(QLabel("Clé API"), 1, 0)
-        ai_layout.addWidget(self.ai_api_key_input, 1, 1, 1, 2)
-        ai_layout.addWidget(openai_model_label, 2, 0)
-        ai_layout.addWidget(self.openai_model_input, 2, 1, 1, 2)
-        ai_layout.addWidget(openai_base_url_label, 3, 0)
-        ai_layout.addWidget(self.openai_base_url_input, 3, 1, 1, 2)
-        ai_layout.addWidget(minimax_model_label, 4, 0)
-        ai_layout.addWidget(self.minimax_model_input, 4, 1, 1, 2)
-        ai_layout.addWidget(minimax_base_url_label, 5, 0)
-        ai_layout.addWidget(self.minimax_base_url_input, 5, 1, 1, 2)
-        ai_layout.addWidget(self.save_settings_button, 6, 1)
-        ai_hint = QLabel("Collez une clé pour l'ajouter à .env. Laissez le champ vide pour conserver la clé existante.")
-        ai_hint.setWordWrap(True)
-        ai_hint.setObjectName("Muted")
-        ai_layout.addWidget(ai_hint, 7, 0, 1, 3)
-        settings_layout.addWidget(ai_box)
-
-        storage_box = QGroupBox("Stockage portable")
-        storage_layout = QGridLayout(storage_box)
-        storage_layout.addWidget(self.open_data_button, 0, 0)
-        storage_layout.addWidget(self.open_logs_button, 0, 1)
-        storage_layout.addWidget(self.reload_button, 1, 0, 1, 2)
-        storage_note = QLabel("Paramètres, base locale, logs, cache et rapports restent dans le dossier de l'application.")
-        storage_note.setWordWrap(True)
-        storage_note.setObjectName("Muted")
-        storage_layout.addWidget(storage_note, 2, 0, 1, 2)
-        settings_layout.addWidget(storage_box)
-        settings_layout.addStretch(1)
-
-        self.connection_tab_index = self.tabs.addTab(connection_tab, "Connexion")
-        self.scan_tab_index = self.tabs.addTab(scan_tab, "Scan")
-        self.results_tab_index = self.tabs.addTab(results_tab, "Résultats")
-        self.details_tab_index = self.tabs.addTab(details_tab, "Détails")
-        self.exports_tab_index = self.tabs.addTab(exports_tab, "Exports")
-        self.settings_tab_index = self.tabs.addTab(settings_tab, "Paramètres")
+        self.connection_tab_index = self.tabs.addTab(ConnectionTab(self).build(), "Connexion")
+        self.scan_tab_index = self.tabs.addTab(ScanTab(self).build(), "Scan")
+        self.results_tab_index = self.tabs.addTab(ResultsTab(self).build(), "Résultats")
+        self.details_tab_index = self.tabs.addTab(DetailsTab(self).build(), "Détails")
+        self.exports_tab_index = self.tabs.addTab(ExportsTab(self).build(), "Exports")
+        self.settings_tab_index = self.tabs.addTab(SettingsTab(self).build(), "Paramètres")
 
         self.setCentralWidget(root)
+        self._connect_actions()
+        self.update_ai_settings_status()
+        self.setStyleSheet(APP_STYLESHEET)
+        self.update_workflow_state("connect")
 
+    def _build_header(self, main_layout: QVBoxLayout) -> None:
+        header_layout = QHBoxLayout()
+        title_block = QVBoxLayout()
+        title_block.setSpacing(2)
+
+        title = QLabel("Microwest Android Cleaner")
+        title.setObjectName("Title")
+        subtitle = QLabel("Diagnostic Android / Samsung")
+        subtitle.setObjectName("Subtitle")
+        title_block.addWidget(title)
+        title_block.addWidget(subtitle)
+
+        self.status_label = QLabel("Aucun appareil détecté")
+        self.status_label.setObjectName("StatusPill")
+        self.status_label.setMinimumWidth(320)
+        self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        header_layout.addLayout(title_block, 1)
+        header_layout.addWidget(self.status_label)
+        main_layout.addLayout(header_layout)
+
+    def _build_workflow_strip(self, main_layout: QVBoxLayout) -> None:
+        workflow_layout = QHBoxLayout()
+        workflow_layout.setSpacing(8)
+        self.workflow_step_labels = []
+        for key, label in (
+            ("connect", "1 Connexion"),
+            ("scan", "2 Scan"),
+            ("results", "3 Résultats"),
+            ("validate", "4 Validation"),
+            ("export", "5 Export"),
+        ):
+            step = QLabel(label)
+            step.setProperty("step_key", key)
+            step.setObjectName("WorkflowStep")
+            workflow_layout.addWidget(step)
+            self.workflow_step_labels.append(step)
+        workflow_layout.addStretch(1)
+        main_layout.addLayout(workflow_layout)
+
+    def _connect_actions(self) -> None:
+        self.quick_scan_button.clicked.connect(self.start_quick_diagnostic)
+        self.scan_quick_button.clicked.connect(self.start_quick_diagnostic)
         self.detect_button.clicked.connect(self.detect_phone)
         self.adb_diagnostic_button.clicked.connect(lambda: self.run_adb_diagnostic(repair=False))
         self.adb_repair_button.clicked.connect(lambda: self.run_adb_diagnostic(repair=True))
@@ -837,39 +561,6 @@ class MainWindow(QMainWindow):
         self.table.itemSelectionChanged.connect(self.update_details_from_selection)
         self.table.itemChanged.connect(self.on_table_item_changed)
         self.table.cellDoubleClicked.connect(self.open_details_for_cell)
-        self.update_ai_settings_status()
-
-        self.setStyleSheet(
-            """
-            QMainWindow { background: #f4f6f8; }
-            QLabel#Title { font-size: 24px; font-weight: 700; color: #111827; }
-            QLabel#Subtitle { font-size: 13px; color: #64748b; }
-            QLabel#StatusPill { color: #334155; background: #e8eef5; border: 1px solid #ccd6e3; border-radius: 6px; padding: 7px 10px; }
-            QLabel#Muted { color: #5f6b7a; }
-            QLabel#SectionTitle { font-size: 16px; font-weight: 700; color: #172033; }
-            QLabel#MetricLabel { color: #1f2937; font-weight: 700; background: #eef4fb; border: 1px solid #d7e2ee; border-radius: 6px; padding: 6px 9px; }
-            QTabWidget#WorkspaceTabs::pane { border: 1px solid #d4dde8; background: white; border-radius: 0; top: -1px; }
-            QTabBar::tab { min-width: 92px; padding: 10px 14px; border: 1px solid #d4dde8; background: #edf2f7; margin-right: 2px; color: #1f2937; }
-            QTabBar::tab:selected { background: white; border-bottom-color: white; font-weight: 700; color: #111827; }
-            QTabBar::tab:hover { background: #f8fafc; }
-            QGroupBox { border: 1px solid #d8dee8; border-radius: 6px; margin-top: 10px; padding: 12px; background: #ffffff; }
-            QGroupBox#SidebarGroup { background: #fbfcfe; }
-            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
-            QPushButton { padding: 8px 12px; border: 1px solid #b7c2d0; border-radius: 6px; background: #ffffff; color: #111827; }
-            QPushButton:hover { background: #eef5ff; border-color: #8fb2df; }
-            QPushButton#PrimaryButton { background: #1d4ed8; border-color: #1d4ed8; color: white; font-weight: 700; }
-            QPushButton#PrimaryButton:hover { background: #1e40af; border-color: #1e40af; }
-            QPushButton#DangerButton { color: #991b1b; border-color: #e1a1a1; background: #fff7f7; }
-            QPushButton#DangerButton:hover { background: #fee2e2; border-color: #dc2626; }
-            QPushButton:disabled { color: #8492a6; background: #eef2f7; }
-            QLineEdit, QComboBox { padding: 7px; border: 1px solid #b9c2cf; border-radius: 6px; background: white; }
-            QLineEdit:focus, QComboBox:focus { border-color: #2563eb; }
-            QTableWidget { background: white; border: 1px solid #d8dee8; gridline-color: #edf1f5; selection-background-color: #2563eb; selection-color: white; }
-            QTableWidget { alternate-background-color: #f9fbfd; }
-            QTextEdit { background: white; border: 1px solid #d8dee8; border-radius: 6px; padding: 8px; }
-            QHeaderView::section { background: #edf2f7; padding: 7px; border: 0; border-right: 1px solid #d8dee8; font-weight: 700; color: #1f2937; }
-            """
-        )
 
     def _apply_ai_button_state(self) -> None:
         if self.ai_analyzer.enabled:
@@ -924,10 +615,12 @@ class MainWindow(QMainWindow):
         self.is_busy = busy
         for widget in (
             self.detect_button,
+            self.quick_scan_button,
             self.adb_diagnostic_button,
             self.adb_repair_button,
             self.adb_daemon_button,
             self.scan_button,
+            self.scan_quick_button,
             self.demo_button,
             self.open_settings_button,
             self.uninstall_button,
@@ -965,14 +658,50 @@ class MainWindow(QMainWindow):
         if message:
             self.status_label.setText(message)
 
+    def update_workflow_state(self, active: str) -> None:
+        order = ["connect", "scan", "results", "validate", "export"]
+        active_index = order.index(active) if active in order else 0
+        for label in self.workflow_step_labels:
+            key = str(label.property("step_key") or "")
+            index = order.index(key) if key in order else 0
+            if index < active_index:
+                object_name = "WorkflowStepDone"
+            elif index == active_index:
+                object_name = "WorkflowStepActive"
+            else:
+                object_name = "WorkflowStep"
+            label.setObjectName(object_name)
+            self._refresh_style(label)
+
+    def _refresh_style(self, widget: QWidget) -> None:
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+        widget.update()
+
+    def start_quick_diagnostic(self) -> None:
+        self.quick_scan_pending = True
+        if self.device.state == "device" and self.device.serial:
+            self.scan_apps()
+            return
+        self.tabs.setCurrentIndex(self.connection_tab_index)
+        self.detect_phone()
+
     def detect_phone(self) -> None:
+        self.update_workflow_state("connect")
         self.set_busy(True, "Détection du téléphone...")
         worker = DetectWorker(self.selected_device_serial())
         worker.succeeded.connect(self.on_device_detected)
         worker.failed.connect(self.on_worker_failed)
-        worker.finished.connect(lambda: self.set_busy(False))
+        worker.finished.connect(self.on_detect_worker_finished)
         self.current_worker = worker
         worker.start()
+
+    def on_detect_worker_finished(self) -> None:
+        if self.quick_scan_pending and self.device.state == "device" and self.device.serial:
+            self.set_busy(False)
+            self.scan_apps()
+            return
+        self.set_busy(False)
 
     def run_adb_diagnostic(self, repair: bool = False) -> None:
         message = "Réparation de la connexion ADB..." if repair else "Diagnostic ADB en cours..."
@@ -1028,6 +757,10 @@ class MainWindow(QMainWindow):
         self.model_label.setText(f"{device.manufacturer} {device.model}".strip() or "-")
         self.android_label.setText(device.android_version or "-")
         self.serial_label.setText(device.serial or "-")
+        if device.state == "device":
+            self.update_workflow_state("scan")
+        else:
+            self.quick_scan_pending = False
 
     def on_adb_diagnostic_finished(self, report: dict[str, Any]) -> None:
         device: DeviceInfo = report.get("device", DeviceInfo())
@@ -1118,10 +851,13 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Diagnostic exporté", f"Diagnostic créé :\n{path}")
 
     def scan_apps(self) -> None:
+        self.quick_scan_pending = False
         if self.device.state != "device" or not self.device.serial:
+            self.update_workflow_state("connect")
             QMessageBox.warning(self, "Téléphone requis", "Détectez d'abord un téléphone autorisé en USB.")
             return
         self.tabs.setCurrentIndex(self.scan_tab_index)
+        self.update_workflow_state("scan")
         self.set_busy(True, "Scan des applications en cours...")
         self.scan_progress.setValue(0)
         self.progress_label.setText("Préparation du scan...")
@@ -1173,6 +909,7 @@ class MainWindow(QMainWindow):
             self.progress_label.setText("Scan terminé")
         if rows:
             self.tabs.setCurrentIndex(self.results_tab_index)
+            self.update_workflow_state("results")
 
     def on_scan_worker_finished(self) -> None:
         self.scan_worker = None
@@ -1206,8 +943,8 @@ class MainWindow(QMainWindow):
             "",
             priority_text(row_data),
             str(risk.score),
-            risk.category,
-            risk.recommended_action,
+            display_category(risk.category),
+            display_action(risk.recommended_action),
             app.display_name(),
             app.package_name,
             app.installer or "inconnu",
@@ -1298,6 +1035,39 @@ class MainWindow(QMainWindow):
         self.summary_hidden_label.setText(f"Cachées: {summary['hidden']}")
         self.summary_sideload_label.setText(f"Sideload: {summary['sideload']}")
         self.summary_selected_label.setText(f"Cochées: {checked}")
+        self.update_results_action_banner(summary, checked)
+        if checked:
+            self.update_workflow_state("validate")
+        elif self.rows:
+            self.update_workflow_state("results")
+
+    def update_results_action_banner(self, summary: dict[str, int], checked: int) -> None:
+        if not self.rows:
+            state = "neutral"
+            title = "Lancez un scan pour obtenir une synthèse."
+            body = "Diagnostic rapide détecte le téléphone, scanne les apps utilisateur et ouvre cette vue."
+        elif summary["high"]:
+            state = "risk"
+            title = f"{summary['high']} app(s) à traiter en priorité"
+            body = (
+                "Commencez par Cocher à traiter, ouvrez les détails des apps sélectionnées, "
+                "puis désinstallez uniquement après validation humaine."
+            )
+        elif summary["review"]:
+            state = "review"
+            title = f"{summary['review']} app(s) à vérifier manuellement"
+            body = "Aucune urgence forte détectée. Vérifiez les permissions, l'installateur et la note client avant action."
+        else:
+            state = "ok"
+            title = "Aucune app utilisateur à traiter"
+            body = "Vous pouvez exporter un rapport client ou conserver le scan dans l'historique local."
+        if checked:
+            body = f"{body} {checked} ligne(s) cochée(s)."
+
+        self.results_action_title_label.setText(title)
+        self.results_action_body_label.setText(body)
+        self.results_action_banner.setProperty("state", state)
+        self._refresh_style(self.results_action_banner)
 
     def check_rows(self, mode: str) -> None:
         self.table.blockSignals(True)
@@ -1442,6 +1212,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Erreur rapport", f"Export impossible : {exc}")
             return
         QMessageBox.information(self, "Rapport exporté", f"Rapport créé :\n{path}")
+        self.update_workflow_state("export")
 
     def export_csv(self) -> None:
         if not self.rows:
@@ -1489,6 +1260,7 @@ class MainWindow(QMainWindow):
                     ]
                 )
         QMessageBox.information(self, "CSV exporté", f"CSV créé :\n{path}")
+        self.update_workflow_state("export")
 
     def export_action_plan(self) -> None:
         if not self.rows:
@@ -1498,6 +1270,7 @@ class MainWindow(QMainWindow):
         path = REPORTS_DIR / f"plan_action_android_cleaner_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
         path.write_text(build_action_plan(self.device, self.rows, self.selected_rows()), encoding="utf-8")
         QMessageBox.information(self, "Plan action exporté", f"Plan créé :\n{path}")
+        self.update_workflow_state("export")
 
     def copy_action_plan(self) -> None:
         if not self.rows:
@@ -1595,6 +1368,7 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Mode démo")
         self.status_label.setText("Mode démo chargé : données fictives.")
         self.tabs.setCurrentIndex(self.results_tab_index)
+        self.update_workflow_state("results")
 
     def reload_reputation(self) -> None:
         self.db = ReputationDatabase()
@@ -1720,6 +1494,7 @@ class MainWindow(QMainWindow):
         return None
 
     def on_worker_failed(self, message: str) -> None:
+        self.quick_scan_pending = False
         self.status_label.setText("Erreur")
         QMessageBox.critical(self, "Erreur", message)
 
