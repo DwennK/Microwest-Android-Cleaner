@@ -70,6 +70,35 @@ python -m ruff check .
 
 Les fichiers produits à l'exécution restent locaux et ne doivent pas être versionnés : base SQLite portable, logs, rapports exportés et cache d'icônes. Les dossiers conservent seulement leurs `.gitkeep`.
 
+## Packaging installable
+
+Une cible PyInstaller est fournie pour créer un bundle desktop depuis le poste de build. Elle reste volontairement explicite sur les binaires Android à embarquer :
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+python packaging/build_pyinstaller.py --include-adb --include-aapt2
+```
+
+Sur Windows :
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+python packaging\build_pyinstaller.py --include-adb --include-aapt2
+```
+
+Options utiles :
+
+- `--include-adb` embarque les fichiers présents dans `adb/` ;
+- `--include-aapt2` embarque les fichiers présents dans `tools/` ;
+- `--icon chemin/icone.icns` ou `--icon chemin/icone.ico` ajoute une icône native ;
+- `--print-command` affiche la commande PyInstaller sans construire.
+
+Le résultat est écrit dans `dist/`. Les dossiers `build/`, `dist/` et `packaging/generated/` ne sont pas versionnés.
+
 ## Installer ADB
 
 Option 1 : placer le binaire ADB compatible avec votre système dans :
