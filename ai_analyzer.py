@@ -8,8 +8,10 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-
 LOGGER = logging.getLogger(__name__)
+MAX_REASON_LENGTH = 500
+ALLOWED_ACTIONS = {"keep", "review", "suggest_uninstall", "do_not_touch"}
+ALLOWED_CONFIDENCE = {"low", "medium", "high"}
 
 SYSTEM_PROMPT = (
     "Tu es un assistant de diagnostic Android pour un magasin de réparation smartphone. "
@@ -83,7 +85,7 @@ class AIAnalyzer:
                     }
                 ]
             },
-            "apps": apps,
+            "apps": apps[:40],
         }
         request = {
             "messages": [
@@ -108,7 +110,7 @@ class AIAnalyzer:
 
     def _parse_response(self, content: str) -> dict[str, AIResult]:
         try:
-            raw = json.loads(content)
+            raw = json.loads(extract_json_payload(content))
         except json.JSONDecodeError:
             LOGGER.exception("OpenAI response was not valid JSON: %s", content)
             return {}
@@ -125,14 +127,14 @@ class AIAnalyzer:
                 score = int(item.get("risk_score", 0))
             except (TypeError, ValueError):
                 score = 0
-            confidence = str(item.get("confidence", "low")).lower()
-            if confidence not in {"low", "medium", "high"}:
-                confidence = "low"
+            confidence = normalize_choice(item.get("confidence"), ALLOWED_CONFIDENCE, "low")
+            action = normalize_choice(item.get("recommended_action"), ALLOWED_ACTIONS, "review")
+            reason = str(item.get("reason_fr", "Analyse IA non détaillée.")).strip() or "Analyse IA non détaillée."
             results[package_name] = AIResult(
                 risk_score=max(0, min(100, score)),
-                category=str(item.get("category", "unknown_review_manually")),
-                recommended_action=str(item.get("recommended_action", "review")),
-                reason_fr=str(item.get("reason_fr", "Analyse IA non détaillée.")),
+                category=str(item.get("category", "unknown_review_manually")).strip() or "unknown_review_manually",
+                recommended_action=action,
+                reason_fr=reason[:MAX_REASON_LENGTH],
                 confidence=confidence,
             )
         return results
@@ -157,3 +159,29 @@ def ai_payload_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "target_sdk": app.target_sdk,
         "install_date": app.install_date,
     }
+
+
+def extract_json_payload(content: str) -> str:
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`").strip()
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:].strip()
+    if cleaned.startswith("{") or cleaned.startswith("["):
+        return cleaned
+
+    object_start = cleaned.find("{")
+    object_end = cleaned.rfind("}")
+    if object_start >= 0 and object_end > object_start:
+        return cleaned[object_start : object_end + 1]
+
+    array_start = cleaned.find("[")
+    array_end = cleaned.rfind("]")
+    if array_start >= 0 and array_end > array_start:
+        return cleaned[array_start : array_end + 1]
+    return cleaned
+
+
+def normalize_choice(value: Any, allowed: set[str], fallback: str) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in allowed else fallback

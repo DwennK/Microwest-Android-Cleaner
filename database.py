@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import shutil
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from risk_rules import ReputationLookup
 
-
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = PROJECT_DIR / "data" / "app_reputation.sqlite"
+CURRENT_SCHEMA_VERSION = 1
 
 DEFAULT_WHITELIST = [
     ("com.whatsapp", "WhatsApp", "Application courante connue"),
@@ -57,6 +59,9 @@ class ReputationDatabase:
 
     def initialize(self) -> None:
         with self.connect() as con:
+            current_version = int(con.execute("PRAGMA user_version").fetchone()[0])
+            if current_version < CURRENT_SCHEMA_VERSION:
+                self._backup_existing_database(con, current_version)
             con.execute(
                 """
                 CREATE TABLE IF NOT EXISTS whitelist(
@@ -112,6 +117,17 @@ class ReputationDatabase:
                 "INSERT OR IGNORE INTO whitelist(package, label, reason) VALUES(?, ?, ?)",
                 DEFAULT_WHITELIST,
             )
+            con.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
+
+    def _backup_existing_database(self, con: sqlite3.Connection, current_version: int) -> None:
+        if current_version >= CURRENT_SCHEMA_VERSION or not self.db_path.exists():
+            return
+        table_count = con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'").fetchone()[0]
+        if not table_count:
+            return
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = self.db_path.with_name(f"{self.db_path.stem}.schema{current_version}_backup_{timestamp}.sqlite")
+        shutil.copy2(self.db_path, backup_path)
 
     def is_whitelisted(self, package: str) -> bool:
         with self.connect() as con:

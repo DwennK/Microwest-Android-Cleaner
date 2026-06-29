@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 
 from scanner import AppInfo, installed_recently
 
-
 SAFE_INSTALLERS = {
     "com.android.vending": "Google Play",
     "com.sec.android.app.samsungapps": "Galaxy Store",
@@ -358,6 +357,8 @@ def classify(score: int, app: AppInfo, reputation: ReputationLookup) -> tuple[st
         return "do_not_touch_system", "do_not_touch"
     if score < 60:
         return "unknown_review_manually", "review"
+    if app.installer in SAFE_INSTALLERS and not has_uninstall_distribution_signal(app):
+        return "unknown_review_manually", "review"
     if app.installer in SAFE_INSTALLERS and not has_strong_uninstall_signal(app):
         return "unknown_review_manually", "review"
     if app.has_accessibility or app.has_device_admin:
@@ -398,14 +399,31 @@ def has_strong_uninstall_signal(app: AppInfo) -> bool:
         return True
     if app.has_launcher_entry is False and (app.has_overlay or app.requests_post_notifications):
         return True
-    if has_cleaner_bait_profile(app):
-        return True
-    return False
+    return bool(has_cleaner_bait_profile(app))
 
 
 def has_cleaner_bait_profile(app: AppInfo) -> bool:
     return contains_any(label_and_package(app), CLEANER_BAIT_WORDS) and (
         app.has_overlay or app.has_accessibility or app.has_notification_listener
+    )
+
+
+def has_uninstall_distribution_signal(app: AppInfo) -> bool:
+    text = label_and_package(app)
+    if not app.installer or app.installer not in SAFE_INSTALLERS:
+        return True
+    if app.has_launcher_entry is False:
+        return True
+    if app.can_install_unknown_apps:
+        return True
+    if contains_scam_bait(text):
+        return True
+    if has_cleaner_bait_profile(app):
+        return True
+    if impersonates_official_namespace(app):
+        return True
+    return contains_any(text, SUSPICIOUS_WORDS) and (
+        app.has_overlay or app.has_notification_listener or app.requests_post_notifications
     )
 
 
@@ -464,6 +482,4 @@ def looks_random_or_generic(package_name: str) -> bool:
         return True
     if re.fullmatch(r"[a-z]{1,3}\d{2,}[a-z0-9]*", tail):
         return True
-    if re.fullmatch(r"[a-z0-9]{12,}", tail) and not re.search(r"[aeiou]{2}", tail):
-        return True
-    return False
+    return bool(re.fullmatch(r"[a-z0-9]{12,}", tail) and not re.search(r"[aeiou]{2}", tail))
