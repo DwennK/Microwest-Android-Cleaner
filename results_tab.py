@@ -162,6 +162,7 @@ class ResultsTab:
         window.table.setColumnWidth(9, 160)
         window.table.setColumnWidth(window.COL_NOTE, 180)
         window.table.setColumnWidth(12, 220)
+        window.table.setColumnWidth(window.COL_VALIDATION, 120)
         for column in (3, 7, 8, 9, window.COL_NOTE, window.COL_REASONS, 12):
             window.table.setColumnHidden(column, True)
 

@@ -85,7 +85,7 @@ class AIAnalyzer:
                     }
                 ]
             },
-            "apps": apps[:40],
+            "apps": apps,
         }
         request = {
             "messages": [
@@ -148,7 +148,9 @@ def ai_payload_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "app_name_source": app.app_label_source,
         "package_name": app.package_name,
         "installer": app.installer,
-        "permissions_sensibles": app.sensitive_permissions,
+        "permissions_demandees": app.requested_permissions or app.sensitive_permissions,
+        "permissions_accordees": app.granted_permissions,
+        "capacites_actives": app.active_capabilities,
         "is_system_app": app.is_system_app,
         "has_launcher_entry": app.has_launcher_entry,
         "hidden_audit": app.hidden_audit,
@@ -185,3 +187,17 @@ def extract_json_payload(content: str) -> str:
 def normalize_choice(value: Any, allowed: set[str], fallback: str) -> str:
     normalized = str(value or "").strip().lower()
     return normalized if normalized in allowed else fallback
+
+
+def analyze_in_batches(
+    analyzer: AIAnalyzer,
+    apps: list[dict[str, Any]],
+    *,
+    batch_size: int = 40,
+) -> dict[str, AIResult]:
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive")
+    results: dict[str, AIResult] = {}
+    for start in range(0, len(apps), batch_size):
+        results.update(analyzer.analyze(apps[start : start + batch_size]))
+    return results

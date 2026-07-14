@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import unittest
 
-from adb_client import ADBDevice, parse_devices_l, parse_launcher_packages, select_device
+from adb_client import (
+    ADBDevice,
+    parse_appop_mode,
+    parse_component_packages,
+    parse_device_admin_packages,
+    parse_devices_l,
+    parse_launcher_packages,
+    select_device,
+)
 
 
 class ADBClientParserTests(unittest.TestCase):
@@ -52,6 +60,17 @@ android.intent.action.MAIN
 """
 
         self.assertEqual(parse_launcher_packages(output), {"com.example.cleaner", "com.vendor.weather"})
+
+    def test_parse_active_capability_sources(self) -> None:
+        self.assertEqual(
+            parse_component_packages("com.example.one/.Service:com.example.two/.Listener"),
+            {"com.example.one", "com.example.two"},
+        )
+        self.assertEqual(
+            parse_device_admin_packages("AdminInfo{com.example.admin/.Receiver}"),
+            {"com.example.admin"},
+        )
+        self.assertEqual(parse_appop_mode("SYSTEM_ALERT_WINDOW: allow; time=+2m", "SYSTEM_ALERT_WINDOW"), "allow")
 
 
 if __name__ == "__main__":

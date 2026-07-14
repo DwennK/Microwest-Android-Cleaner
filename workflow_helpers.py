@@ -95,6 +95,7 @@ def build_action_plan(
             [
                 f"- {app.display_name()} ({app.package_name})",
                 f"  Score : {risk.score} - {risk.category}",
+                f"  Validation technicien : {row.get('validation', 'unreviewed')}",
                 f"  Raisons : {'; '.join(risk.reasons[:4])}",
                 f"  Commande après validation : adb shell pm uninstall --user 0 {app.package_name}",
             ]
@@ -121,7 +122,8 @@ def build_action_plan(
 
 
 def permission_matches(app: AppInfo, query: str) -> bool:
-    haystack = " ".join(app.sensitive_permissions + app.notification_audit + app.hidden_audit).upper()
+    requested = app.requested_permissions or app.sensitive_permissions
+    haystack = " ".join(requested + app.granted_permissions + app.active_capabilities + app.notification_audit + app.hidden_audit).upper()
     flags = {
         "ACCESSIBILITY": app.has_accessibility,
         "NOTIFICATION": app.has_notification_listener or app.requests_post_notifications,

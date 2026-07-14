@@ -232,6 +232,40 @@ class ADBClient:
     def dumpsys_package(self, serial: str, package: str) -> str:
         return self.shell(serial, ["dumpsys", "package", package], timeout=15)
 
+    def active_service_capabilities(self, serial: str) -> dict[str, set[str]]:
+        capabilities: dict[str, set[str]] = {}
+        secure_settings = {
+            "enabled_accessibility_services": "accessibility",
+            "enabled_notification_listeners": "notification_listener",
+        }
+        for setting, capability in secure_settings.items():
+            try:
+                output = self.shell(serial, ["settings", "get", "secure", setting], timeout=8)
+            except ADBError:
+                LOGGER.debug("Unable to read active Android setting %s", setting)
+                continue
+            for package in parse_component_packages(output):
+                capabilities.setdefault(package, set()).add(capability)
+
+        try:
+            device_policy = self.shell(serial, ["dumpsys", "device_policy"], timeout=12)
+        except ADBError:
+            LOGGER.debug("Unable to read active device administrators")
+        else:
+            for package in parse_device_admin_packages(device_policy):
+                capabilities.setdefault(package, set()).add("device_admin")
+        return capabilities
+
+    def appop_mode(self, serial: str, package: str, operation: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+", package):
+            return ""
+        try:
+            output = self.shell(serial, ["cmd", "appops", "get", package, operation], timeout=8)
+        except ADBError:
+            LOGGER.debug("Unable to read app-op %s for %s", operation, package)
+            return ""
+        return parse_appop_mode(output, operation)
+
     def package_paths(self, serial: str, package: str) -> list[str]:
         output = self.shell(serial, ["pm", "path", package], timeout=10)
         paths: list[str] = []
@@ -287,6 +321,36 @@ def parse_launcher_packages(output: str) -> set[str]:
                 packages.add(match.group(1))
                 break
     return packages
+
+
+def parse_component_packages(output: str) -> set[str]:
+    packages: set[str] = set()
+    if output.strip().lower() in {"", "null", "none"}:
+        return packages
+    for component in re.split(r"[:,]", output):
+        package = component.strip().split("/", 1)[0]
+        if re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+", package):
+            packages.add(package)
+    return packages
+
+
+def parse_device_admin_packages(output: str) -> set[str]:
+    packages: set[str] = set()
+    for match in re.finditer(r"(?:AdminInfo|ComponentInfo)\{([^/\s}]+)/", output):
+        package = match.group(1).strip()
+        if re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+", package):
+            packages.add(package)
+    return packages
+
+
+def parse_appop_mode(output: str, operation: str) -> str:
+    for line in output.splitlines():
+        if operation not in line:
+            continue
+        match = re.search(r"\b(allow|foreground|deny|ignore|default)\b", line, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+    return ""
 
 
 def parse_devices_l(output: str) -> list[ADBDevice]:

@@ -54,6 +54,9 @@ class AppInfo:
     installer: str = ""
     is_system_app: bool = False
     sensitive_permissions: list[str] = field(default_factory=list)
+    requested_permissions: list[str] = field(default_factory=list)
+    granted_permissions: list[str] = field(default_factory=list)
+    active_capabilities: list[str] = field(default_factory=list)
     enabled: str = ""
     install_date: str = ""
     version_name: str = ""
@@ -88,6 +91,8 @@ class AppScanner:
     def scan(self, serial: str, include_system: bool = False) -> list[AppInfo]:
         packages = self.adb_client.list_packages(serial, include_system=include_system)
         launcher_packages = self.adb_client.list_launcher_packages(serial)
+        active_reader = getattr(self.adb_client, "active_service_capabilities", None)
+        active_capabilities = active_reader(serial) if callable(active_reader) else {}
         apps: list[AppInfo] = []
 
         for package, installer in packages.items():
@@ -97,6 +102,7 @@ class AppScanner:
                 installer=installer,
                 include_system=include_system,
                 launcher_packages=launcher_packages,
+                active_services=active_capabilities,
             )
             apps.append(app)
         return apps
@@ -108,6 +114,7 @@ class AppScanner:
         installer: str = "",
         include_system: bool = False,
         launcher_packages: set[str] | None = None,
+        active_services: dict[str, set[str]] | None = None,
     ) -> AppInfo:
         app = AppInfo(package_name=package, installer=installer, is_system_app=include_system)
         try:
@@ -115,6 +122,8 @@ class AppScanner:
                 app.has_launcher_entry = package in launcher_packages
             dumpsys = self.adb_client.dumpsys_package(serial, package)
             self._enrich_from_dumpsys(app, dumpsys)
+            app.active_capabilities = sorted((active_services or {}).get(package, set()))
+            self._enrich_from_appops(serial, app)
             self._enrich_from_apk(serial, app)
             self._finalize_audits(app)
         except Exception as exc:  # noqa: BLE001 - UI should show partial scan, not abort all.
@@ -129,7 +138,9 @@ class AppScanner:
         app.install_date = self._extract_value(dumpsys, r"firstInstallTime=([^\n\r]+)")
         app.enabled = self._extract_enabled(dumpsys)
         app.is_system_app = self._is_system_app(dumpsys)
-        app.sensitive_permissions = self._extract_sensitive_permissions(dumpsys)
+        app.requested_permissions = self._extract_sensitive_permissions(dumpsys)
+        app.sensitive_permissions = list(app.requested_permissions)
+        app.granted_permissions = self._extract_granted_sensitive_permissions(dumpsys)
         app.has_accessibility = "BIND_ACCESSIBILITY_SERVICE" in dumpsys or "AccessibilityService" in dumpsys
         app.has_overlay = "SYSTEM_ALERT_WINDOW" in dumpsys
         app.has_device_admin = "BIND_DEVICE_ADMIN" in dumpsys or "android.app.device_admin" in dumpsys
@@ -141,6 +152,23 @@ class AppScanner:
         app.has_usage_stats = "PACKAGE_USAGE_STATS" in dumpsys
         app.runs_at_boot = "RECEIVE_BOOT_COMPLETED" in dumpsys
         app.has_vpn_service = "BIND_VPN_SERVICE" in dumpsys or "VpnService" in dumpsys
+
+    def _enrich_from_appops(self, serial: str, app: AppInfo) -> None:
+        appop_mode = getattr(self.adb_client, "appop_mode", None)
+        if not callable(appop_mode):
+            return
+        checks = [
+            (app.has_overlay, "SYSTEM_ALERT_WINDOW", "overlay"),
+            (app.has_usage_stats, "GET_USAGE_STATS", "usage_stats"),
+            (app.can_install_unknown_apps, "REQUEST_INSTALL_PACKAGES", "install_unknown_apps"),
+            (app.requests_post_notifications, "POST_NOTIFICATION", "notifications"),
+            (app.uses_exact_alarm, "SCHEDULE_EXACT_ALARM", "exact_alarm"),
+        ]
+        active = set(app.active_capabilities)
+        for requested, operation, capability in checks:
+            if requested and appop_mode(serial, app.package_name, operation) in {"allow", "foreground"}:
+                active.add(capability)
+        app.active_capabilities = sorted(active)
 
     def _extract_label(self, package_name: str, dumpsys: str) -> str:
         # dumpsys generally does not expose the localized label. The APK label
@@ -195,15 +223,19 @@ class AppScanner:
 
         app.notification_audit = []
         if app.has_notification_listener:
-            app.notification_audit.append("Accès aux notifications")
+            state = "actif" if "notification_listener" in app.active_capabilities else "demandé"
+            app.notification_audit.append(f"Accès notifications {state}")
         if app.requests_post_notifications:
-            app.notification_audit.append("Demande POST_NOTIFICATIONS")
+            state = "accordé/actif" if self._permission_or_capability_active(app, "POST_NOTIFICATIONS", "notifications") else "demandé"
+            app.notification_audit.append(f"POST_NOTIFICATIONS {state}")
         if app.runs_at_boot:
-            app.notification_audit.append("Démarrage automatique")
+            app.notification_audit.append("Réception du démarrage déclarée")
         if app.uses_exact_alarm:
-            app.notification_audit.append("Alarmes exactes")
+            state = "active" if "exact_alarm" in app.active_capabilities else "demandée"
+            app.notification_audit.append(f"Alarme exacte {state}")
         if app.uses_vibration:
-            app.notification_audit.append("Vibration")
+            state = "accordée" if any("VIBRATE" in value for value in app.granted_permissions) else "demandée"
+            app.notification_audit.append(f"Vibration {state}")
 
     def _extract_value(self, text: str, pattern: str) -> str:
         match = re.search(pattern, text)
@@ -231,6 +263,18 @@ class AppScanner:
             if any(keyword in name for keyword in SENSITIVE_PERMISSION_KEYWORDS):
                 found.add(name)
         return sorted(found)
+
+    def _extract_granted_sensitive_permissions(self, dumpsys: str) -> list[str]:
+        granted: set[str] = set()
+        pattern = r"^\s*(android\.permission\.([A-Z0-9_]+)):\s+granted=true\b"
+        for match in re.finditer(pattern, dumpsys, flags=re.MULTILINE):
+            name, keyword = match.group(1), match.group(2)
+            if any(marker in keyword for marker in SENSITIVE_PERMISSION_KEYWORDS):
+                granted.add(name)
+        return sorted(granted)
+
+    def _permission_or_capability_active(self, app: AppInfo, permission: str, capability: str) -> bool:
+        return capability in app.active_capabilities or any(permission in value for value in app.granted_permissions)
 
 
 def installed_recently(install_date: str, days: int = 10) -> bool:

@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-import csv
-import json
 import logging
 import os
 import platform
 import subprocess
 import sys
 import tempfile
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QLockFile, Qt, QThread, QTimer, Signal, qVersion
+from PySide6.QtCore import QLockFile, Qt, QThread, QTimer, qVersion
 from PySide6.QtGui import QAction, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -29,19 +26,37 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from adb_client import ADBClient, ADBDevice, ADBError, ADBNotFoundError, DeviceInfo, parse_devices_l
-from ai_analyzer import AIAnalyzer, AIResult, ai_payload_from_row
-from apk_metadata import ApkMetadataExtractor
+from adb_client import ADBDevice, DeviceInfo
+from ai_analyzer import AIAnalyzer, AIResult
+from app_config import (
+    LOG_DIR,
+    PROJECT_DIR,
+    REPORTS_DIR,
+    load_ui_settings,
+    save_env_value,
+    save_ui_settings,
+    setup_logging,
+)
 from app_style import APP_STYLESHEET
+from app_workers import (
+    ADBDaemonWorker,
+    ADBDiagnosticWorker,
+    AIWorker,
+    DetectWorker,
+    DevicesRefreshWorker,
+    OpenAppSettingsWorker,
+    ScanWorker,
+    UninstallWorker,
+)
 from connection_tab import ConnectionTab
-from database import ReputationDatabase
+from database import ReputationDatabase, ScanComparison
 from details_tab import DetailsTab
+from export_service import export_action_plan_text, export_diagnostic_text, export_scan_csv
 from exports_tab import ExportsTab
 from report_generator import export_html_report
 from results_tab import ResultsTab
 from risk_rules import evaluate_app
 from scan_tab import ScanTab
-from scan_workflow import run_scan
 from scanner import AppInfo
 from settings_tab import SettingsTab
 from workflow_helpers import (
@@ -55,292 +70,6 @@ from workflow_helpers import (
     priority_text,
     scan_summary,
 )
-
-PROJECT_DIR = Path(__file__).resolve().parent
-LOG_DIR = PROJECT_DIR / "logs"
-REPORTS_DIR = PROJECT_DIR / "reports"
-SETTINGS_PATH = PROJECT_DIR / "data" / "ui_settings.json"
-ENV_PATH = PROJECT_DIR / ".env"
-
-
-def setup_logging() -> None:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        handlers=[
-            logging.FileHandler(LOG_DIR / "app.log", encoding="utf-8"),
-            logging.StreamHandler(sys.stderr),
-        ],
-    )
-
-
-def load_ui_settings() -> dict[str, Any]:
-    try:
-        if SETTINGS_PATH.exists():
-            raw = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                return raw
-    except Exception:  # noqa: BLE001
-        logging.exception("Unable to load UI settings")
-    return {}
-
-
-def save_ui_settings(settings: dict[str, Any]) -> None:
-    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_PATH.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def save_env_value(key: str, value: str) -> None:
-    lines = ENV_PATH.read_text(encoding="utf-8").splitlines() if ENV_PATH.exists() else []
-    output: list[str] = []
-    replaced = False
-    for line in lines:
-        if line.startswith(f"{key}="):
-            output.append(f"{key}={value}")
-            replaced = True
-        else:
-            output.append(line)
-    if not replaced:
-        output.append(f"{key}={value}")
-    ENV_PATH.write_text("\n".join(output).rstrip() + "\n", encoding="utf-8")
-    os.environ[key] = value
-
-
-def portable_runtime_checks() -> list[tuple[str, str, str]]:
-    checks: list[tuple[str, str, str]] = []
-    paths = [
-        ("Dossier app", PROJECT_DIR),
-        ("Base locale", PROJECT_DIR / "data"),
-        ("Logs", PROJECT_DIR / "logs"),
-        ("Cache", PROJECT_DIR / "cache"),
-        ("Rapports", PROJECT_DIR / "reports"),
-        ("ADB portable", PROJECT_DIR / "adb"),
-        ("Outils", PROJECT_DIR / "tools"),
-    ]
-    for label, path in paths:
-        try:
-            path.mkdir(parents=True, exist_ok=True)
-            probe = path / ".write_test"
-            probe.write_text("ok", encoding="utf-8")
-            probe.unlink(missing_ok=True)
-            checks.append((label, str(path), "OK écriture"))
-        except Exception as exc:  # noqa: BLE001
-            checks.append((label, str(path), f"ERREUR écriture : {exc}"))
-    return checks
-
-
-class DetectWorker(QThread):
-    succeeded = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, serial: str = "") -> None:
-        super().__init__()
-        self.serial = serial
-
-    def run(self) -> None:
-        try:
-            client = ADBClient()
-            devices = client.detailed_devices()
-            device = client.detect_device(self.serial)
-            self.succeeded.emit({"device": device, "devices": devices, "adb_path": client.adb_path})
-        except ADBNotFoundError as exc:
-            self.failed.emit(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            logging.exception("Device detection failed")
-            self.failed.emit(f"Détection impossible : {exc}")
-
-
-class ADBDaemonWorker(QThread):
-    succeeded = Signal(str)
-    failed = Signal(str)
-
-    def __init__(self, action: str) -> None:
-        super().__init__()
-        self.action = action
-
-    def run(self) -> None:
-        try:
-            client = ADBClient()
-            if self.action == "start":
-                output = client.start_server()
-            elif self.action == "kill":
-                output = client.kill_server()
-            elif self.action == "restart":
-                output = client.restart_server()
-            else:
-                raise ValueError(f"Action ADB inconnue : {self.action}")
-            self.succeeded.emit(output)
-        except Exception as exc:  # noqa: BLE001
-            logging.exception("ADB daemon action failed")
-            self.failed.emit(f"Action daemon ADB impossible : {exc}")
-
-
-class ADBDiagnosticWorker(QThread):
-    succeeded = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, repair: bool = False, serial: str = "") -> None:
-        super().__init__()
-        self.repair = repair
-        self.serial = serial
-
-    def run(self) -> None:
-        try:
-            report: dict[str, Any] = {
-                "repair": self.repair,
-                "portable": portable_runtime_checks(),
-                "adb_path": "",
-                "adb_version": "",
-                "adb_restart": "",
-                "adb_error": "",
-                "devices_output": "",
-                "devices": [],
-                "device": DeviceInfo(),
-                "aapt2_path": "",
-                "aapt2_available": False,
-            }
-            extractor = ApkMetadataExtractor()
-            report["aapt2_path"] = extractor.aapt2_path
-            report["aapt2_available"] = extractor.available
-            try:
-                client = ADBClient()
-                report["adb_path"] = client.adb_path
-                if self.repair:
-                    report["adb_restart"] = client.restart_server()
-                    time.sleep(1)
-                report["adb_version"] = client.version()
-                devices_output = client.devices_output()
-                devices = parse_devices_l(devices_output)
-                report["devices_output"] = devices_output
-                report["devices"] = devices
-                report["device"] = client.detect_device(self.serial) if devices else DeviceInfo()
-            except ADBError as exc:
-                report["adb_error"] = str(exc)
-            self.succeeded.emit(report)
-        except Exception as exc:  # noqa: BLE001
-            logging.exception("ADB diagnostic failed")
-            self.failed.emit(f"Diagnostic ADB impossible : {exc}")
-
-
-class DevicesRefreshWorker(QThread):
-    succeeded = Signal(object)
-
-    def run(self) -> None:
-        try:
-            client = ADBClient()
-            self.succeeded.emit(client.detailed_devices())
-        except ADBError:
-            self.succeeded.emit([])
-
-
-class ScanWorker(QThread):
-    succeeded = Signal(object)
-    failed = Signal(str)
-    progress = Signal(int, int, str)
-
-    def __init__(self, serial: str, include_system: bool, device: DeviceInfo) -> None:
-        super().__init__()
-        self.serial = serial
-        self.include_system = include_system
-        self.device = device
-        self.cancel_requested = False
-
-    def cancel(self) -> None:
-        self.cancel_requested = True
-        self.requestInterruption()
-
-    def run(self) -> None:
-        try:
-            result = run_scan(
-                self.serial,
-                self.include_system,
-                self.device,
-                progress=lambda current, total, package: self.progress.emit(current, total, package),
-                should_cancel=lambda: self.cancel_requested or self.isInterruptionRequested(),
-            )
-            self.succeeded.emit(
-                {
-                    "rows": result.rows,
-                    "errors": result.errors,
-                    "cancelled": result.cancelled,
-                    "total": result.total,
-                }
-            )
-        except Exception as exc:  # noqa: BLE001
-            logging.exception("Scan failed")
-            self.failed.emit(f"Scan impossible : {exc}")
-
-
-class AIWorker(QThread):
-    succeeded = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, rows: list[dict[str, Any]]) -> None:
-        super().__init__()
-        self.rows = rows
-
-    def run(self) -> None:
-        try:
-            analyzer = AIAnalyzer()
-            candidates = [
-                ai_payload_from_row(row)
-                for row in self.rows
-                if row["risk"].score >= 30 and row["risk"].recommended_action != "do_not_touch"
-            ][:40]
-            result = analyzer.analyze(candidates)
-            self.succeeded.emit(result)
-        except Exception as exc:  # noqa: BLE001
-            logging.exception("AI analysis failed")
-            self.failed.emit(f"Analyse IA impossible : {exc}")
-
-
-class UninstallWorker(QThread):
-    succeeded = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, serial: str, apps: list[AppInfo]) -> None:
-        super().__init__()
-        self.serial = serial
-        self.apps = apps
-
-    def run(self) -> None:
-        try:
-            adb = ADBClient()
-            db = ReputationDatabase()
-            results = []
-            for app in self.apps:
-                ok, output = adb.uninstall_user_package(self.serial, app.package_name)
-                result_text = output or ("Success" if ok else "Failure")
-                db.record_uninstall(
-                    datetime.now().isoformat(timespec="seconds"),
-                    app.package_name,
-                    app.display_name(),
-                    result_text,
-                )
-                results.append({"package": app.package_name, "label": app.display_name(), "result": result_text})
-            self.succeeded.emit(results)
-        except Exception as exc:  # noqa: BLE001
-            logging.exception("Uninstall failed")
-            self.failed.emit(f"Désinstallation impossible : {exc}")
-
-
-class OpenAppSettingsWorker(QThread):
-    succeeded = Signal(str)
-    failed = Signal(str)
-
-    def __init__(self, serial: str, package: str) -> None:
-        super().__init__()
-        self.serial = serial
-        self.package = package
-
-    def run(self) -> None:
-        try:
-            output = ADBClient().open_app_settings(self.serial, self.package)
-            self.succeeded.emit(output or "Paramètres ouverts sur le téléphone.")
-        except Exception as exc:  # noqa: BLE001
-            logging.exception("Open app settings failed")
-            self.failed.emit(f"Ouverture des paramètres impossible : {exc}")
 
 
 def build_app_details_text(row: dict[str, Any]) -> str:
@@ -372,11 +101,16 @@ def build_app_details_text(row: dict[str, Any]) -> str:
         f"Catégorie : {risk.category}\n"
         f"Action proposée : {risk.recommended_action}\n"
         f"Raisons :\n- " + "\n- ".join(risk.reasons) + "\n\n"
-        "Permissions sensibles :\n- "
-        + ("\n- ".join(app.sensitive_permissions) if app.sensitive_permissions else "Aucune détectée")
+        "Permissions demandées :\n- "
+        + ("\n- ".join(app.requested_permissions or app.sensitive_permissions) if (app.requested_permissions or app.sensitive_permissions) else "Aucune détectée")
+        + "\n\nPermissions accordées :\n- "
+        + ("\n- ".join(app.granted_permissions) if app.granted_permissions else "Aucune confirmée")
+        + "\n\nCapacités actives :\n- "
+        + ("\n- ".join(app.active_capabilities) if app.active_capabilities else "Aucune confirmée")
         + f"\n\nCommande ADB prévue :\n{command}\n\n"
         f"Commande paramètres app :\n{settings_command}\n\n"
         f"Analyse IA :\n{row.get('ai_text') or 'Non effectuée'}"
+        + f"\n\nValidation technicien :\n{display_validation(row.get('validation', 'unreviewed'))}"
         + f"\n\nNote technicien :\n{row.get('note') or 'Aucune'}"
     )
 
@@ -404,6 +138,16 @@ def display_category(category: str) -> str:
     }.get(category, category)
 
 
+def display_validation(status: str) -> str:
+    return {
+        "unreviewed": "Non validée",
+        "keep": "Conserver",
+        "review": "À vérifier",
+        "remove": "Retirer",
+        "removed": "Retirée",
+    }.get(status, "Non validée")
+
+
 class MainWindow(QMainWindow):
     COLUMNS = [
         "",
@@ -419,6 +163,7 @@ class MainWindow(QMainWindow):
         "Note",
         "Raisons",
         "IA",
+        "Validation",
     ]
     COL_CHECK = 0
     COL_PRIORITY = 1
@@ -426,6 +171,7 @@ class MainWindow(QMainWindow):
     COL_PACKAGE = 6
     COL_NOTE = 10
     COL_REASONS = 11
+    COL_VALIDATION = 13
 
     def __init__(self) -> None:
         super().__init__()
@@ -438,6 +184,7 @@ class MainWindow(QMainWindow):
         self.device = DeviceInfo()
         self.rows: list[dict[str, Any]] = []
         self.uninstalled: list[dict[str, str]] = []
+        self.scan_comparison: ScanComparison | None = None
         self.current_worker: QThread | None = None
         self.scan_worker: ScanWorker | None = None
         self.refresh_worker: DevicesRefreshWorker | None = None
@@ -845,9 +592,7 @@ class MainWindow(QMainWindow):
         if not self.last_diagnostic_text:
             QMessageBox.information(self, "Diagnostic absent", "Lancez d'abord Diagnostic ADB.")
             return
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        path = REPORTS_DIR / f"diagnostic_adb_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
-        path.write_text(self.last_diagnostic_text, encoding="utf-8")
+        path = export_diagnostic_text(self.last_diagnostic_text)
         QMessageBox.information(self, "Diagnostic exporté", f"Diagnostic créé :\n{path}")
 
     def scan_apps(self) -> None:
@@ -888,6 +633,7 @@ class MainWindow(QMainWindow):
         rows: list[dict[str, Any]] = payload.get("rows", [])
         errors: list[str] = payload.get("errors", [])
         cancelled = bool(payload.get("cancelled"))
+        self.scan_comparison = payload.get("comparison")
         self.rows = rows
         self.populate_table()
         suspicious = len([r for r in rows if r["risk"].score >= 60 and r["risk"].recommended_action != "do_not_touch"])
@@ -953,6 +699,7 @@ class MainWindow(QMainWindow):
             row_data.get("note", ""),
             "; ".join(risk.reasons),
             row_data.get("ai_text", ""),
+            display_validation(row_data.get("validation", "unreviewed")),
         ]
         color = self._row_color(risk.score, risk.category)
         for col, value in enumerate(values):
@@ -1003,6 +750,7 @@ class MainWindow(QMainWindow):
                     row_data["risk"].category,
                     " ".join(row_data["app"].hidden_audit),
                     " ".join(row_data["app"].notification_audit),
+                    row_data.get("validation", "unreviewed"),
                 ]
             ).lower()
             is_safe = row_data["risk"].score < 30 or row_data["risk"].recommended_action == "keep"
@@ -1108,7 +856,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Scan requis", "Scannez les applications avant de lancer l'analyse IA.")
             return
         self.set_busy(True, "Analyse IA des apps suspectes...")
-        worker = AIWorker(self.rows)
+        worker = AIWorker(self.rows, self.ui_settings)
         worker.succeeded.connect(self.on_ai_finished)
         worker.failed.connect(self.on_worker_failed)
         worker.finished.connect(lambda: self.set_busy(False))
@@ -1185,6 +933,10 @@ class MainWindow(QMainWindow):
             return
 
         self.set_busy(True, "Désinstallation en cours...")
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        for row in allowed:
+            self.db.set_validation(row["app"].package_name, "remove", timestamp)
+            row["validation"] = "remove"
         worker = UninstallWorker(self.device.serial, [r["app"] for r in allowed])
         worker.succeeded.connect(self.on_uninstall_finished)
         worker.failed.connect(self.on_worker_failed)
@@ -1194,6 +946,11 @@ class MainWindow(QMainWindow):
 
     def on_uninstall_finished(self, results: list[dict[str, str]]) -> None:
         self.uninstalled.extend(results)
+        for item in results:
+            row = self.row_by_package(item["package"])
+            if row and item.get("success"):
+                row["validation"] = "removed"
+        self.populate_table()
         message = "\n".join(f"{item['package']}: {item['result']}" for item in results)
         QMessageBox.information(self, "Résultat désinstallation", message or "Aucun résultat.")
         self.status_label.setText("Désinstallation terminée.")
@@ -1206,7 +963,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Rapport impossible", "Scannez les applications avant d'exporter un rapport.")
             return
         try:
-            path = export_html_report(self.device, self.rows, self.uninstalled)
+            path = export_html_report(self.device, self.rows, self.uninstalled, self.scan_comparison)
         except Exception as exc:  # noqa: BLE001
             logging.exception("Report export failed")
             QMessageBox.critical(self, "Erreur rapport", f"Export impossible : {exc}")
@@ -1218,47 +975,7 @@ class MainWindow(QMainWindow):
         if not self.rows:
             QMessageBox.information(self, "CSV impossible", "Scannez les applications avant d'exporter un CSV.")
             return
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        path = REPORTS_DIR / f"apps_android_cleaner_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv"
-        with path.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.writer(handle)
-            writer.writerow(
-                [
-                    "score",
-                    "priority",
-                    "category",
-                    "recommended_action",
-                    "app_name",
-                    "package",
-                    "installer",
-                    "system",
-                    "launcher_visible",
-                    "permissions",
-                    "risk_reasons",
-                    "technician_note",
-                    "metadata_error",
-                ]
-            )
-            for row in self.rows:
-                app: AppInfo = row["app"]
-                risk = row["risk"]
-                writer.writerow(
-                    [
-                        risk.score,
-                        priority_text(row),
-                        risk.category,
-                        risk.recommended_action,
-                        app.display_name(),
-                        app.package_name,
-                        app.installer or "inconnu",
-                        "oui" if app.is_system_app else "non",
-                        launcher_text(app),
-                        "; ".join(app.sensitive_permissions),
-                        "; ".join(risk.reasons),
-                        row.get("note", ""),
-                        app.dumpsys_error,
-                    ]
-                )
+        path = export_scan_csv(self.rows)
         QMessageBox.information(self, "CSV exporté", f"CSV créé :\n{path}")
         self.update_workflow_state("export")
 
@@ -1266,9 +983,7 @@ class MainWindow(QMainWindow):
         if not self.rows:
             QMessageBox.information(self, "Plan impossible", "Scannez les applications avant d'exporter un plan.")
             return
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        path = REPORTS_DIR / f"plan_action_android_cleaner_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
-        path.write_text(build_action_plan(self.device, self.rows, self.selected_rows()), encoding="utf-8")
+        path = export_action_plan_text(self.device, self.rows, self.selected_rows())
         QMessageBox.information(self, "Plan action exporté", f"Plan créé :\n{path}")
         self.update_workflow_state("export")
 
@@ -1327,6 +1042,7 @@ class MainWindow(QMainWindow):
                     "android.permission.RECEIVE_BOOT_COMPLETED",
                 ],
                 has_overlay=True,
+                active_capabilities=["overlay", "notifications"],
                 requests_post_notifications=True,
                 runs_at_boot=True,
                 has_launcher_entry=False,
@@ -1346,6 +1062,7 @@ class MainWindow(QMainWindow):
                 installer="inconnu",
                 sensitive_permissions=["android.permission.BIND_ACCESSIBILITY_SERVICE"],
                 has_accessibility=True,
+                active_capabilities=["accessibility"],
                 has_launcher_entry=False,
                 hidden_audit=["Aucune icône launcher visible", "Nom très générique"],
             ),
@@ -1357,11 +1074,13 @@ class MainWindow(QMainWindow):
                 "ai": None,
                 "ai_text": "",
                 "note": "Exemple de triage" if app.package_name == "com.fast.cleaner.booster" else "",
+                "validation": "review" if app.package_name == "com.fast.cleaner.booster" else "unreviewed",
             }
             for app in demo_apps
         ]
         self.rows.sort(key=lambda item: item["risk"].score, reverse=True)
         self.uninstalled = []
+        self.scan_comparison = None
         self.on_device_detected({"device": self.device, "devices": [ADBDevice("DEMO-ANDROID", "device", "mode:demo")]})
         self.populate_table()
         self.scan_progress.setValue(100)
@@ -1374,6 +1093,7 @@ class MainWindow(QMainWindow):
         self.db = ReputationDatabase()
         for row in self.rows:
             row["risk"] = evaluate_app(row["app"], self.db.reputation_for(row["app"].package_name))
+            row["validation"] = self.db.validation_for(row["app"].package_name)
         self.populate_table()
         self.status_label.setText("Blacklist/whitelist rechargées.")
 
@@ -1396,6 +1116,11 @@ class MainWindow(QMainWindow):
         menu.addAction(whitelist)
         menu.addAction(blacklist)
         menu.addAction(note)
+        validation_menu = menu.addMenu("Validation technicien")
+        keep_validation = validation_menu.addAction("Conserver")
+        review_validation = validation_menu.addAction("À vérifier")
+        remove_validation = validation_menu.addAction("Retirer")
+        clear_validation = validation_menu.addAction("Effacer validation")
         menu.addSeparator()
         menu.addAction(open_settings)
         menu.addAction(copy_package)
@@ -1403,6 +1128,10 @@ class MainWindow(QMainWindow):
         whitelist.triggered.connect(lambda: self.add_reputation(row_data, whitelist=True))
         blacklist.triggered.connect(lambda: self.add_reputation(row_data, whitelist=False))
         note.triggered.connect(lambda: self.edit_note(row_data))
+        keep_validation.triggered.connect(lambda: self.set_row_validation(row_data, "keep"))
+        review_validation.triggered.connect(lambda: self.set_row_validation(row_data, "review"))
+        remove_validation.triggered.connect(lambda: self.set_row_validation(row_data, "remove"))
+        clear_validation.triggered.connect(lambda: self.set_row_validation(row_data, "unreviewed"))
         open_settings.triggered.connect(lambda: self.open_app_settings(row_data))
         copy_package.triggered.connect(lambda: QApplication.clipboard().setText(package))
         details.triggered.connect(lambda: self.open_details(row_data))
@@ -1434,6 +1163,13 @@ class MainWindow(QMainWindow):
         row_data["note"] = note.strip()
         self.populate_table()
         self.status_label.setText(f"Note mise à jour : {app.package_name}")
+
+    def set_row_validation(self, row_data: dict[str, Any], status: str) -> None:
+        app = row_data["app"]
+        self.db.set_validation(app.package_name, status, datetime.now().isoformat(timespec="seconds"))
+        row_data["validation"] = status
+        self.populate_table()
+        self.status_label.setText(f"Validation mise à jour : {app.package_name} — {display_validation(status)}")
 
     def open_details_for_cell(self, row: int, _column: int) -> None:
         package_item = self.table.item(row, self.COL_PACKAGE)

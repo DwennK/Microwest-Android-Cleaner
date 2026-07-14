@@ -5,11 +5,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from database import ScanComparison
+
 PROJECT_DIR = Path(__file__).resolve().parent
 REPORTS_DIR = PROJECT_DIR / "reports"
 
 
-def export_html_report(device: Any, rows: list[dict[str, Any]], uninstalled: list[dict[str, str]]) -> Path:
+def export_html_report(
+    device: Any,
+    rows: list[dict[str, Any]],
+    uninstalled: list[dict[str, str]],
+    comparison: ScanComparison | None = None,
+) -> Path:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     path = REPORTS_DIR / f"rapport_android_cleaner_{timestamp}.html"
@@ -60,6 +67,9 @@ def export_html_report(device: Any, rows: list[dict[str, Any]], uninstalled: lis
     permissions et signaux de risque. Aucune donnée personnelle du client n'a été lue.
   </div>
 
+  <h2>Évolution depuis le scan précédent</h2>
+  {comparison_section(comparison)}
+
   <h2>Apps suspectes détectées</h2>
   {table_for_rows(suspicious)}
 
@@ -80,7 +90,7 @@ def table_for_rows(rows: list[dict[str, Any]]) -> str:
         return "<p class=\"muted\">Aucune.</p>"
     lines = [
         "<table>",
-        "<tr><th>Priorité</th><th>Score</th><th>Catégorie</th><th>Action</th><th>Nom</th><th>Package</th><th>Visibilité</th><th>Notifications</th><th>Raisons</th><th>Note</th><th>IA</th></tr>",
+        "<tr><th>Priorité</th><th>Score</th><th>Catégorie</th><th>Action</th><th>Validation</th><th>Nom</th><th>Package</th><th>Visibilité</th><th>Notifications</th><th>Raisons</th><th>Note</th><th>IA</th></tr>",
     ]
     for row in rows:
         app = row["app"]
@@ -93,6 +103,7 @@ def table_for_rows(rows: list[dict[str, Any]]) -> str:
             f"<td class=\"{css}\">{risk.score}</td>"
             f"<td>{html.escape(risk.category)}</td>"
             f"<td>{html.escape(risk.recommended_action)}</td>"
+            f"<td>{html.escape(validation_label(row.get('validation', 'unreviewed')))}</td>"
             f"<td>{html.escape(app.display_name())}</td>"
             f"<td>{html.escape(app.package_name)}</td>"
             f"<td>{html.escape(report_hidden_summary(app))}</td>"
@@ -104,6 +115,56 @@ def table_for_rows(rows: list[dict[str, Any]]) -> str:
         )
     lines.append("</table>")
     return "\n".join(lines)
+
+
+def comparison_section(comparison: ScanComparison | None) -> str:
+    if comparison is None:
+        return '<p class="muted">Comparaison indisponible pour ce scan.</p>'
+    if comparison.previous_scan_id is None:
+        return '<p class="muted">Premier scan complet de ce téléphone : référence initiale enregistrée.</p>'
+
+    lines = [
+        '<div class="notice">',
+        f"<strong>Nouvelles apps :</strong> {len(comparison.new_apps)} · ",
+        f"<strong>Apps retirées :</strong> {len(comparison.removed_apps)} · ",
+        f"<strong>Inchangées :</strong> {comparison.unchanged_count} · ",
+        f"<strong>Risque modifié :</strong> {len(comparison.risk_changes)}",
+        "</div>",
+    ]
+    if comparison.new_apps:
+        lines.append("<h3>Nouvelles applications</h3><ul>")
+        lines.extend(
+            f"<li>{html.escape(app.app_label)} ({html.escape(app.package)}) — score {app.score}</li>"
+            for app in comparison.new_apps
+        )
+        lines.append("</ul>")
+    if comparison.removed_apps:
+        lines.append("<h3>Applications retirées depuis le dernier scan</h3><ul>")
+        lines.extend(
+            f"<li>{html.escape(app.app_label)} ({html.escape(app.package)}) — validation {html.escape(validation_label(app.validation_status))}</li>"
+            for app in comparison.removed_apps
+        )
+        lines.append("</ul>")
+    if comparison.risk_changes:
+        lines.append("<h3>Évolution du risque</h3><ul>")
+        lines.extend(
+            f"<li>{html.escape(change.app_label)} ({html.escape(change.package)}) : "
+            f"{change.previous_score} → {change.current_score}, "
+            f"{html.escape(change.previous_action)} → {html.escape(change.current_action)}</li>"
+            for change in comparison.risk_changes
+        )
+        lines.append("</ul>")
+    return "\n".join(lines)
+
+
+def validation_label(status: str) -> str:
+    return {
+        "unreviewed": "Non validée",
+        "keep": "Conserver",
+        "review": "À vérifier",
+        "remove": "Retirer",
+        "removed": "Retirée",
+    }.get(status, "Non validée")
 
 
 def report_hidden_summary(app: Any) -> str:

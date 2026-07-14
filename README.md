@@ -259,13 +259,17 @@ Boutons de triage :
 
 Les notes technicien sont conservées dans la base SQLite portable et apparaissent dans les détails, le CSV et le rapport HTML.
 
+Le menu contextuel `Validation technicien` permet de marquer une application `Conserver`, `À vérifier` ou `Retirer`. Cette décision reste persistante et apparaît dans les détails, le plan d'action, le CSV et le rapport client. Une désinstallation confirmée marque automatiquement l'application comme retirée.
+
 Dans `Exports`, le bouton `Plan action` exporte un fichier texte dans `reports/` avec les apps à valider, les raisons principales et les commandes ADB exactes à n'utiliser qu'après validation humaine. `Copier plan` place le même plan dans le presse-papiers. `Ouvrir rapports` ouvre le dossier portable `reports/`.
+
+Chaque scan complet conserve aussi un snapshot local des packages et scores pour ce téléphone, identifié par une empreinte non réversible du numéro ADB. Le rapport HTML compare le scan courant au précédent : nouvelles applications, applications retirées, apps inchangées et changements de score/action. Les scans annulés ne sont jamais utilisés comme référence avant/après.
 
 Dans `Paramètres`, le bouton `Mode démo` charge un faux téléphone et des apps fictives pour tester l'interface sans Android branché, puis ouvre `Résultats`. Le choix du provider IA masque automatiquement les champs de l'autre provider. Les boutons `Ouvrir dossier data`, `Ouvrir logs` et `Recharger blacklist/whitelist` regroupent la maintenance locale. Le bouton `Historique` dans `Exports` affiche les derniers scans enregistrés dans la base SQLite portable.
 
 ## Détection des apps suspectes
 
-Le score local combine plusieurs signaux. Une app n'est pas déclarée malveillante avec certitude : elle est remontée pour vérification humaine.
+Le score local combine plusieurs signaux. Une app n'est pas déclarée malveillante avec certitude : elle est remontée pour vérification humaine. Le scanner distingue maintenant une permission simplement demandée, une permission accordée et une capacité Android réellement active. Une déclaration seule pèse moins lourd qu'un accès confirmé actif.
 
 Signaux utilisés :
 
@@ -283,9 +287,15 @@ Signaux utilisés :
 - target SDK ancien ;
 - package très générique ou semblant aléatoire.
 
+Pour les accès spéciaux, l'application effectue uniquement des lectures ADB non destructives (`settings get`, `cmd appops get` et `dumpsys device_policy`). Elle ne modifie aucun paramètre Android. Les détails et les exports séparent :
+
+- permissions demandées par l'application ;
+- permissions actuellement accordées ;
+- capacités actives confirmées, par exemple overlay, accessibilité ou écoute des notifications.
+
 ## Analyse IA optionnelle
 
-L'analyse IA utilise OpenAI par défaut, ou MiniMax si `AI_PROVIDER=minimax` est configuré. Le provider, la clé API, le modèle et la base URL peuvent aussi être choisis dans l'onglet `Paramètres`.
+L'analyse IA utilise OpenAI par défaut, ou MiniMax si `AI_PROVIDER=minimax` est configuré. Le provider, la clé API, le modèle et la base URL peuvent aussi être choisis dans l'onglet `Paramètres`. Les réglages visibles dans l'interface sont transmis tels quels au worker d'analyse. Si plus de 40 applications nécessitent une analyse, elles sont traitées par lots successifs sans être ignorées.
 
 Créer un fichier `.env` à côté de `main.py` :
 

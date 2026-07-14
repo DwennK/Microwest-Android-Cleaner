@@ -101,6 +101,27 @@ class RiskRuleTests(unittest.TestCase):
 
         self.assertEqual(risk.recommended_action, "suggest_uninstall")
 
+    def test_active_capability_scores_higher_than_declared_only(self) -> None:
+        declared = AppInfo(
+            package_name="com.example.notes",
+            app_label="Notes",
+            installer="com.android.vending",
+            has_launcher_entry=True,
+            has_accessibility=True,
+            sensitive_permissions=["android.permission.BIND_ACCESSIBILITY_SERVICE"],
+        )
+        active = AppInfo(
+            package_name="com.example.notes2",
+            app_label="Notes",
+            installer="com.android.vending",
+            has_launcher_entry=True,
+            has_accessibility=True,
+            sensitive_permissions=["android.permission.BIND_ACCESSIBILITY_SERVICE"],
+        )
+        active.active_capabilities = ["accessibility"]
+
+        self.assertGreater(evaluate_app(active).score, evaluate_app(declared).score)
+
 
 if __name__ == "__main__":
     unittest.main()

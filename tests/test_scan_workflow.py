@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from adb_client import DeviceInfo
+from database import ScanComparison
 from risk_rules import ReputationLookup
 from scan_workflow import run_scan
 
@@ -28,12 +29,16 @@ class FakeADB:
 class FakeDB:
     def __init__(self) -> None:
         self.recorded = False
+        self.snapshots_recorded = False
 
     def reputation_for(self, package: str) -> ReputationLookup:
         return ReputationLookup()
 
     def note_for(self, package: str) -> str:
         return ""
+
+    def validation_for(self, package: str) -> str:
+        return "unreviewed"
 
     def record_scan(
         self,
@@ -42,8 +47,17 @@ class FakeDB:
         android_version: str,
         scanned_count: int,
         suspicious_count: int,
-    ) -> None:
+        *,
+        device_serial: str = "",
+    ) -> int:
         self.recorded = True
+        return 1
+
+    def record_scan_apps(self, scan_id: int, rows: list[dict]) -> None:
+        self.snapshots_recorded = True
+
+    def comparison_for_scan(self, scan_id: int) -> ScanComparison:
+        return ScanComparison(current_scan_id=scan_id, previous_scan_id=None)
 
 
 class ScanWorkflowTests(unittest.TestCase):
@@ -64,7 +78,25 @@ class ScanWorkflowTests(unittest.TestCase):
         self.assertEqual(result.total, 1)
         self.assertEqual(result.rows[0]["app"].package_name, "com.fast.cleaner")
         self.assertTrue(db.recorded)
+        self.assertTrue(db.snapshots_recorded)
+        self.assertEqual(result.comparison, ScanComparison(current_scan_id=1, previous_scan_id=None))
         self.assertEqual(progress_events, [(1, 1, "com.fast.cleaner")])
+
+    def test_cancelled_scan_is_not_recorded_as_before_after_snapshot(self) -> None:
+        db = FakeDB()
+
+        result = run_scan(
+            "SERIAL",
+            False,
+            DeviceInfo(serial="SERIAL", model="Demo", android_version="14"),
+            adb=FakeADB(),
+            db=db,
+            should_cancel=lambda: True,
+        )
+
+        self.assertTrue(result.cancelled)
+        self.assertFalse(db.recorded)
+        self.assertIsNone(result.comparison)
 
 
 if __name__ == "__main__":

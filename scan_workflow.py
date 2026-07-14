@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from adb_client import ADBClient, DeviceInfo
-from database import ReputationDatabase
+from database import ReputationDatabase, ScanComparison
 from risk_rules import evaluate_app
 from scanner import AppScanner
 
@@ -20,6 +20,7 @@ class ScanResult:
     errors: list[str] = field(default_factory=list)
     cancelled: bool = False
     total: int = 0
+    comparison: ScanComparison | None = None
 
 
 def run_scan(
@@ -37,6 +38,8 @@ def run_scan(
     scanner = AppScanner(adb)
     packages = adb.list_packages(serial, include_system=include_system)
     launcher_packages = adb.list_launcher_packages(serial)
+    active_service_reader = getattr(adb, "active_service_capabilities", None)
+    active_services = active_service_reader(serial) if callable(active_service_reader) else {}
     result = ScanResult(total=len(packages))
 
     for index, (package, installer) in enumerate(packages.items(), start=1):
@@ -52,16 +55,26 @@ def run_scan(
             installer=installer,
             include_system=include_system,
             launcher_packages=launcher_packages,
+            active_services=active_services,
         )
         if app.dumpsys_error:
             result.errors.append(f"{package}: {app.dumpsys_error}")
 
         risk = evaluate_app(app, db.reputation_for(app.package_name))
-        result.rows.append({"app": app, "risk": risk, "ai": None, "ai_text": "", "note": db.note_for(app.package_name)})
+        result.rows.append(
+            {
+                "app": app,
+                "risk": risk,
+                "ai": None,
+                "ai_text": "",
+                "note": db.note_for(app.package_name),
+                "validation": db.validation_for(app.package_name),
+            }
+        )
 
     result.rows.sort(key=lambda item: item["risk"].score, reverse=True)
-    if result.rows:
-        db.record_scan(
+    if result.rows and not result.cancelled:
+        scan_id = db.record_scan(
             datetime.now().isoformat(timespec="seconds"),
             device.model,
             device.android_version,
@@ -73,5 +86,8 @@ def run_scan(
                     if row["risk"].score >= 60 and row["risk"].recommended_action != "do_not_touch"
                 ]
             ),
+            device_serial=device.serial or serial,
         )
+        db.record_scan_apps(scan_id, result.rows)
+        result.comparison = db.comparison_for_scan(scan_id)
     return result

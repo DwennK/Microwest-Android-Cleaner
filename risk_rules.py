@@ -206,7 +206,9 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score -= 80
         reasons.append("Présent dans la whitelist locale.")
 
-    sensitive_count = len(app.sensitive_permissions)
+    requested_permissions = app.requested_permissions or app.sensitive_permissions
+    granted_permissions = app.granted_permissions
+    sensitive_count = len(requested_permissions)
     has_suspicious_name = contains_any(label_and_package(app), SUSPICIOUS_WORDS)
     has_cleaner_bait = contains_any(label_and_package(app), CLEANER_BAIT_WORDS)
     has_scam_bait = contains_scam_bait(label_and_package(app))
@@ -214,22 +216,36 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
     has_hidden_profile = bool(app.hidden_audit) and app.has_launcher_entry is False
     has_notification_profile = bool(app.notification_audit)
 
-    if app.has_accessibility:
+    if is_capability_active(app, "accessibility"):
         score += 35
-        reasons.append("Service d'accessibilité détecté.")
+        reasons.append("Service d'accessibilité actif.")
+    elif app.has_accessibility:
+        score += 10
+        reasons.append("Service d'accessibilité déclaré mais non confirmé actif.")
 
-    if (app.has_overlay or _has_permission(app, "SYSTEM_ALERT_WINDOW")) and not trusted_official:
+    overlay_requested = app.has_overlay or _has_permission(app, "SYSTEM_ALERT_WINDOW")
+    if is_capability_active(app, "overlay") and not trusted_official:
         score += 30
-        reasons.append("Permission overlay SYSTEM_ALERT_WINDOW détectée.")
+        reasons.append("Permission overlay SYSTEM_ALERT_WINDOW active.")
+    elif overlay_requested and not trusted_official:
+        score += 8
+        reasons.append("Permission overlay SYSTEM_ALERT_WINDOW demandée mais non confirmée active.")
 
-    dangerous = [p for p in app.sensitive_permissions if any(marker in p for marker in HIGH_RISK_PERMISSION_MARKERS)]
-    if dangerous and not trusted_official:
+    dangerous_granted = [p for p in granted_permissions if any(marker in p for marker in HIGH_RISK_PERMISSION_MARKERS)]
+    dangerous_requested = [p for p in requested_permissions if any(marker in p for marker in HIGH_RISK_PERMISSION_MARKERS)]
+    if dangerous_granted and not trusted_official:
         score += 25
-        reasons.append("Permissions sensibles SMS/appels/contacts/admin/notifications détectées.")
+        reasons.append("Permissions sensibles SMS/appels/contacts accordées.")
+    elif dangerous_requested and not trusted_official:
+        score += 8
+        reasons.append("Permissions sensibles SMS/appels/contacts demandées mais non confirmées accordées.")
 
-    if sensitive_count >= 5 and not trusted_official:
+    if len(granted_permissions) >= 5 and not trusted_official:
         score += 20
-        reasons.append("Nombre élevé de permissions sensibles.")
+        reasons.append("Nombre élevé de permissions sensibles accordées.")
+    elif sensitive_count >= 5 and not trusted_official:
+        score += 5
+        reasons.append("Nombre élevé de permissions sensibles demandées.")
 
     if not app.installer:
         score += 20
@@ -255,37 +271,49 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score += 15
         reasons.append("Application installée récemment.")
 
-    if app.has_accessibility and not reputation.whitelisted and not trusted_official:
+    if is_capability_active(app, "device_admin"):
         score += 30
-        reasons.append("Accessibilité demandée sans whitelist locale.")
+        reasons.append("Administrateur de l'appareil actif.")
+    elif app.has_device_admin:
+        score += 10
+        reasons.append("Fonction administrateur déclarée mais non confirmée active.")
 
-    if app.has_device_admin:
-        score += 30
-        reasons.append("Fonction administrateur de l'appareil détectée.")
-
-    if app.has_notification_listener:
+    if is_capability_active(app, "notification_listener"):
         score += 35
-        reasons.append("Accès aux notifications détecté.")
+        reasons.append("Accès aux notifications actif.")
+    elif app.has_notification_listener:
+        score += 10
+        reasons.append("Accès aux notifications déclaré mais non confirmé actif.")
 
     if app.requests_post_notifications and has_suspicious_name and not trusted_official:
-        score += 15
-        reasons.append("Demande notifications avec nom suspect.")
+        if is_capability_active(app, "notifications"):
+            score += 15
+            reasons.append("Notifications actives avec nom suspect.")
+        else:
+            score += 5
+            reasons.append("Notifications demandées avec nom suspect.")
 
     if has_notification_profile and len(app.notification_audit) >= 3 and not reputation.whitelisted and not trusted_official:
-        score += 20
+        score += 20 if any(capability in app.active_capabilities for capability in ("notifications", "notification_listener")) else 5
         reasons.append("Profil notification/spam potentiel : " + ", ".join(app.notification_audit[:4]) + ".")
 
-    if app.can_install_unknown_apps and not trusted_official:
+    if is_capability_active(app, "install_unknown_apps") and not trusted_official:
         score += 25
-        reasons.append("Peut demander l'installation d'apps inconnues.")
+        reasons.append("Installation d'apps inconnues autorisée.")
+    elif app.can_install_unknown_apps and not trusted_official:
+        score += 8
+        reasons.append("Installation d'apps inconnues demandée mais non confirmée autorisée.")
 
-    if app.has_usage_stats:
+    if is_capability_active(app, "usage_stats"):
         score += 20
-        reasons.append("Accès aux statistiques d'utilisation détecté.")
+        reasons.append("Accès aux statistiques d'utilisation actif.")
+    elif app.has_usage_stats:
+        score += 5
+        reasons.append("Accès aux statistiques d'utilisation demandé mais non confirmé actif.")
 
     if app.has_vpn_service and has_unknown_installer:
-        score += 20
-        reasons.append("Service VPN/proxy hors installateur de confiance.")
+        score += 8
+        reasons.append("Service VPN/proxy déclaré hors installateur de confiance.")
 
     if app.runs_at_boot and has_suspicious_name and not trusted_official:
         score += 15
@@ -299,25 +327,40 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score += 25
         reasons.append("Profil peu visible combiné à installateur inconnu ou nom suspect.")
 
-    if (
-        app.has_launcher_entry is False
-        and (app.has_notification_listener or app.requests_post_notifications or app.has_overlay)
-        and not trusted_official
-    ):
-        score += 25
-        reasons.append("App peu visible avec accès notifications ou overlay.")
+    if app.has_launcher_entry is False and not trusted_official:
+        hidden_active = any(
+            capability in app.active_capabilities for capability in ("notification_listener", "notifications", "overlay")
+        )
+        hidden_requested = app.has_notification_listener or app.requests_post_notifications or app.has_overlay
+        if hidden_active:
+            score += 25
+            reasons.append("App peu visible avec accès notifications ou overlay actif.")
+        elif hidden_requested:
+            score += 8
+            reasons.append("App peu visible avec accès notifications ou overlay demandé.")
 
     if looks_generic_identity(app) and (has_unknown_installer or app.has_launcher_entry is False) and not trusted_official:
         score += 15
         reasons.append("Nom ou icône générique avec visibilité faible.")
 
-    if has_cleaner_bait and (app.has_overlay or app.has_accessibility or app.has_notification_listener):
-        score += 30
-        reasons.append("Combinaison cleaner/booster avec overlay, accessibilité ou notifications.")
+    if has_cleaner_bait:
+        cleaner_active = any(
+            capability in app.active_capabilities for capability in ("overlay", "accessibility", "notification_listener")
+        )
+        cleaner_requested = app.has_overlay or app.has_accessibility or app.has_notification_listener
+        if cleaner_active:
+            score += 30
+            reasons.append("Combinaison cleaner/booster avec overlay, accessibilité ou notifications actifs.")
+        elif cleaner_requested:
+            score += 10
+            reasons.append("Combinaison cleaner/booster avec accès sensibles demandés.")
 
-    if has_unknown_installer and has_suspicious_name and dangerous:
+    if has_unknown_installer and has_suspicious_name and dangerous_granted:
         score += 25
-        reasons.append("Installateur non fiable + nom suspect + permissions sensibles.")
+        reasons.append("Installateur non fiable + nom suspect + permissions sensibles accordées.")
+    elif has_unknown_installer and has_suspicious_name and dangerous_requested:
+        score += 8
+        reasons.append("Installateur non fiable + nom suspect + permissions sensibles demandées.")
 
     if target_sdk_is_old(app.target_sdk) and not trusted_official:
         score += 15
@@ -349,6 +392,8 @@ def classify(score: int, app: AppInfo, reputation: ReputationLookup) -> tuple[st
         if app.has_accessibility or app.has_device_admin or app.has_notification_listener or score >= 50:
             return "trusted_official_review", "review"
         return "trusted_official", "keep"
+    if app.installer in SAFE_INSTALLERS and has_declared_sensitive_review_signal(app):
+        return "unknown_review_manually", "review"
     if reputation.whitelisted or score < 15:
         return "safe", "keep"
     if score < 30:
@@ -361,9 +406,9 @@ def classify(score: int, app: AppInfo, reputation: ReputationLookup) -> tuple[st
         return "unknown_review_manually", "review"
     if app.installer in SAFE_INSTALLERS and not has_strong_uninstall_signal(app):
         return "unknown_review_manually", "review"
-    if app.has_accessibility or app.has_device_admin:
+    if is_capability_active(app, "accessibility") or is_capability_active(app, "device_admin"):
         return "spyware_suspect", "suggest_uninstall"
-    if app.can_install_unknown_apps or contains_scam_bait(label_and_package(app)):
+    if is_capability_active(app, "install_unknown_apps") or contains_scam_bait(label_and_package(app)):
         return "scam_suspect", "suggest_uninstall"
     if app.has_launcher_entry is False or app.notification_audit:
         return "adware_suspect", "suggest_uninstall"
@@ -373,7 +418,24 @@ def classify(score: int, app: AppInfo, reputation: ReputationLookup) -> tuple[st
 
 
 def _has_permission(app: AppInfo, marker: str) -> bool:
-    return any(marker in permission for permission in app.sensitive_permissions)
+    permissions = app.requested_permissions or app.sensitive_permissions
+    return any(marker in permission for permission in permissions)
+
+
+def is_capability_active(app: AppInfo, capability: str) -> bool:
+    return capability in app.active_capabilities
+
+
+def has_declared_sensitive_review_signal(app: AppInfo) -> bool:
+    requested = app.requested_permissions or app.sensitive_permissions
+    return (
+        app.has_accessibility
+        or app.has_device_admin
+        or app.has_notification_listener
+        or app.has_overlay
+        or len([permission for permission in requested if any(marker in permission for marker in HIGH_RISK_PERMISSION_MARKERS)])
+        >= 2
+    )
 
 
 def label_and_package(app: AppInfo) -> str:
@@ -395,16 +457,23 @@ def contains_scam_bait(text: str) -> bool:
 
 
 def has_strong_uninstall_signal(app: AppInfo) -> bool:
-    if app.has_accessibility or app.has_device_admin or app.has_notification_listener or app.can_install_unknown_apps:
+    if any(
+        is_capability_active(app, capability)
+        for capability in ("accessibility", "device_admin", "notification_listener", "install_unknown_apps")
+    ):
         return True
-    if app.has_launcher_entry is False and (app.has_overlay or app.requests_post_notifications):
+    if app.has_launcher_entry is False and (
+        is_capability_active(app, "overlay") or is_capability_active(app, "notifications")
+    ):
         return True
     return bool(has_cleaner_bait_profile(app))
 
 
 def has_cleaner_bait_profile(app: AppInfo) -> bool:
     return contains_any(label_and_package(app), CLEANER_BAIT_WORDS) and (
-        app.has_overlay or app.has_accessibility or app.has_notification_listener
+        is_capability_active(app, "overlay")
+        or is_capability_active(app, "accessibility")
+        or is_capability_active(app, "notification_listener")
     )
 
 

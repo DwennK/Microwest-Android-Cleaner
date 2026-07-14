@@ -2,14 +2,48 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
+from typing import Any
 
 from risk_rules import ReputationLookup
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = PROJECT_DIR / "data" / "app_reputation.sqlite"
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
+VALIDATION_STATUSES = {"unreviewed", "keep", "review", "remove", "removed"}
+
+
+@dataclass(frozen=True, slots=True)
+class ScanAppSnapshot:
+    package: str
+    app_label: str
+    score: int
+    category: str
+    action: str
+    validation_status: str
+
+
+@dataclass(frozen=True, slots=True)
+class RiskChange:
+    package: str
+    app_label: str
+    previous_score: int
+    current_score: int
+    previous_action: str
+    current_action: str
+
+
+@dataclass(frozen=True, slots=True)
+class ScanComparison:
+    current_scan_id: int
+    previous_scan_id: int | None
+    new_apps: tuple[ScanAppSnapshot, ...] = ()
+    removed_apps: tuple[ScanAppSnapshot, ...] = ()
+    unchanged_count: int = 0
+    risk_changes: tuple[RiskChange, ...] = ()
 
 DEFAULT_WHITELIST = [
     ("com.whatsapp", "WhatsApp", "Application courante connue"),
@@ -89,7 +123,8 @@ class ReputationDatabase:
                     device_model TEXT,
                     android_version TEXT,
                     scanned_count INTEGER,
-                    suspicious_count INTEGER
+                    suspicious_count INTEGER,
+                    device_key TEXT NOT NULL DEFAULT ''
                 )
                 """
             )
@@ -113,11 +148,42 @@ class ReputationDatabase:
                 )
                 """
             )
+            self._ensure_column(con, "scan_history", "device_key", "TEXT NOT NULL DEFAULT ''")
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app_validations(
+                    package TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS scan_apps(
+                    scan_id INTEGER NOT NULL,
+                    package TEXT NOT NULL,
+                    app_label TEXT,
+                    score INTEGER NOT NULL,
+                    category TEXT,
+                    action TEXT,
+                    validation_status TEXT NOT NULL DEFAULT 'unreviewed',
+                    PRIMARY KEY(scan_id, package),
+                    FOREIGN KEY(scan_id) REFERENCES scan_history(id) ON DELETE CASCADE
+                )
+                """
+            )
+            con.execute("CREATE INDEX IF NOT EXISTS idx_scan_history_device ON scan_history(device_key, id DESC)")
             con.executemany(
                 "INSERT OR IGNORE INTO whitelist(package, label, reason) VALUES(?, ?, ?)",
                 DEFAULT_WHITELIST,
             )
             con.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
+
+    def _ensure_column(self, con: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {str(row[1]) for row in con.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def _backup_existing_database(self, con: sqlite3.Connection, current_version: int) -> None:
         if current_version >= CURRENT_SCHEMA_VERSION or not self.db_path.exists():
@@ -168,15 +234,134 @@ class ReputationDatabase:
                 (package, label, reason, severity),
             )
 
-    def record_scan(self, date: str, device_model: str, android_version: str, scanned_count: int, suspicious_count: int) -> None:
+    def record_scan(
+        self,
+        date: str,
+        device_model: str,
+        android_version: str,
+        scanned_count: int,
+        suspicious_count: int,
+        *,
+        device_serial: str = "",
+    ) -> int:
         with self.connect() as con:
-            con.execute(
+            cursor = con.execute(
                 """
-                INSERT INTO scan_history(date, device_model, android_version, scanned_count, suspicious_count)
-                VALUES(?, ?, ?, ?, ?)
+                INSERT INTO scan_history(
+                    date, device_model, android_version, scanned_count, suspicious_count, device_key
+                ) VALUES(?, ?, ?, ?, ?, ?)
                 """,
-                (date, device_model, android_version, scanned_count, suspicious_count),
+                (
+                    date,
+                    device_model,
+                    android_version,
+                    scanned_count,
+                    suspicious_count,
+                    self._device_key(device_serial, device_model),
+                ),
             )
+            return int(cursor.lastrowid)
+
+    def record_scan_apps(self, scan_id: int, rows: list[dict[str, Any]]) -> None:
+        values = []
+        for row in rows:
+            app = row["app"]
+            risk = row["risk"]
+            values.append(
+                (
+                    scan_id,
+                    app.package_name,
+                    app.display_name(),
+                    int(risk.score),
+                    str(risk.category),
+                    str(risk.recommended_action),
+                    normalize_validation(row.get("validation", "unreviewed")),
+                )
+            )
+        with self.connect() as con:
+            con.executemany(
+                """
+                INSERT OR REPLACE INTO scan_apps(
+                    scan_id, package, app_label, score, category, action, validation_status
+                ) VALUES(?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
+
+    def comparison_for_scan(self, scan_id: int) -> ScanComparison:
+        with self.connect() as con:
+            current_history = con.execute(
+                "SELECT id, device_key FROM scan_history WHERE id = ?",
+                (scan_id,),
+            ).fetchone()
+            if not current_history:
+                return ScanComparison(scan_id, None)
+            previous = con.execute(
+                """
+                SELECT id FROM scan_history
+                WHERE device_key = ? AND id < ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (current_history["device_key"], scan_id),
+            ).fetchone()
+            current_apps = self._snapshots_for_scan(con, scan_id)
+            if not previous:
+                return ScanComparison(scan_id, None, new_apps=tuple(current_apps.values()))
+            previous_id = int(previous["id"])
+            previous_apps = self._snapshots_for_scan(con, previous_id)
+
+        current_packages = set(current_apps)
+        previous_packages = set(previous_apps)
+        new_apps = tuple(current_apps[package] for package in sorted(current_packages - previous_packages))
+        removed_apps = tuple(previous_apps[package] for package in sorted(previous_packages - current_packages))
+        shared = sorted(current_packages & previous_packages)
+        changes = []
+        for package in shared:
+            old = previous_apps[package]
+            new = current_apps[package]
+            if old.score != new.score or old.action != new.action:
+                changes.append(
+                    RiskChange(
+                        package=package,
+                        app_label=new.app_label,
+                        previous_score=old.score,
+                        current_score=new.score,
+                        previous_action=old.action,
+                        current_action=new.action,
+                    )
+                )
+        return ScanComparison(
+            current_scan_id=scan_id,
+            previous_scan_id=previous_id,
+            new_apps=new_apps,
+            removed_apps=removed_apps,
+            unchanged_count=len(shared) - len(changes),
+            risk_changes=tuple(changes),
+        )
+
+    def _snapshots_for_scan(self, con: sqlite3.Connection, scan_id: int) -> dict[str, ScanAppSnapshot]:
+        rows = con.execute(
+            """
+            SELECT package, app_label, score, category, action, validation_status
+            FROM scan_apps WHERE scan_id = ?
+            """,
+            (scan_id,),
+        )
+        return {
+            str(row["package"]): ScanAppSnapshot(
+                package=str(row["package"]),
+                app_label=str(row["app_label"] or row["package"]),
+                score=int(row["score"]),
+                category=str(row["category"] or ""),
+                action=str(row["action"] or ""),
+                validation_status=normalize_validation(row["validation_status"]),
+            )
+            for row in rows
+        }
+
+    def _device_key(self, serial: str, model: str) -> str:
+        identity = serial.strip() or f"model:{model.strip().lower()}"
+        return sha256(identity.encode("utf-8")).hexdigest()[:24]
 
     def recent_scans(self, limit: int = 20) -> list[sqlite3.Row]:
         with self.connect() as con:
@@ -213,3 +398,33 @@ class ReputationDatabase:
                 )
             else:
                 con.execute("DELETE FROM app_notes WHERE package = ?", (package,))
+
+    def validation_for(self, package: str) -> str:
+        with self.connect() as con:
+            row = con.execute("SELECT status FROM app_validations WHERE package = ?", (package,)).fetchone()
+        return normalize_validation(row["status"] if row else "unreviewed")
+
+    def set_validation(self, package: str, status: str, updated_at: str) -> None:
+        normalized = normalize_validation(status)
+        with self.connect() as con:
+            if normalized == "unreviewed":
+                con.execute("DELETE FROM app_validations WHERE package = ?", (package,))
+            else:
+                con.execute(
+                    "INSERT OR REPLACE INTO app_validations(package, status, updated_at) VALUES(?, ?, ?)",
+                    (package, normalized, updated_at),
+                )
+            con.execute(
+                """
+                UPDATE scan_apps SET validation_status = ?
+                WHERE package = ? AND scan_id = (
+                    SELECT MAX(scan_id) FROM scan_apps WHERE package = ?
+                )
+                """,
+                (normalized, package, package),
+            )
+
+
+def normalize_validation(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in VALIDATION_STATUSES else "unreviewed"
