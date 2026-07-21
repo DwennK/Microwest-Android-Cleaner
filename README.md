@@ -259,7 +259,7 @@ Boutons de triage :
 
 Les notes technicien sont conservées dans la base SQLite portable et apparaissent dans les détails, le CSV et le rapport HTML.
 
-Le menu contextuel `Validation technicien` permet de marquer une application `Conserver`, `À vérifier` ou `Retirer`. Cette décision reste persistante et apparaît dans les détails, le plan d'action, le CSV et le rapport client. Une désinstallation confirmée marque automatiquement l'application comme retirée.
+Le menu contextuel `Validation technicien` permet de marquer une application `Conserver`, `À vérifier` ou `Retirer`. Cette décision est rattachée au scan courant et au téléphone concerné : elle ne se propage jamais vers un nouveau scan ou le téléphone d'un autre client. Elle apparaît dans les détails, le plan d'action, le CSV et le rapport client. Une désinstallation confirmée marque automatiquement l'application comme retirée pour ce scan uniquement. Un scan annulé ou le mode démo ne permet pas de lancer une désinstallation, car aucune validation traçable n'est alors enregistrée.
 
 Dans `Exports`, le bouton `Plan action` exporte un fichier texte dans `reports/` avec les apps à valider, les raisons principales et les commandes ADB exactes à n'utiliser qu'après validation humaine. `Copier plan` place le même plan dans le presse-papiers. `Ouvrir rapports` ouvre le dossier portable `reports/`.
 
@@ -353,6 +353,8 @@ Tables :
 - `whitelist(package TEXT PRIMARY KEY, label TEXT, reason TEXT)`
 - `blacklist(package TEXT PRIMARY KEY, label TEXT, reason TEXT, severity INTEGER)`
 - `scan_history(id INTEGER PRIMARY KEY, date TEXT, device_model TEXT, android_version TEXT, scanned_count INTEGER, suspicious_count INTEGER)`
+- `scan_apps(scan_id INTEGER, package TEXT, score INTEGER, category TEXT, action TEXT, validation_status TEXT, PRIMARY KEY(scan_id, package))`
+- `app_validations(scan_id INTEGER, package TEXT, status TEXT, updated_at TEXT, PRIMARY KEY(scan_id, package))`
 - `uninstall_history(id INTEGER PRIMARY KEY, date TEXT, package TEXT, app_label TEXT, result TEXT)`
 
 La whitelist initiale contient des applications courantes Google, Samsung, Microsoft, WhatsApp, Instagram, Spotify et Netflix.

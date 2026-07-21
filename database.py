@@ -12,7 +12,7 @@ from risk_rules import ReputationLookup
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = PROJECT_DIR / "data" / "app_reputation.sqlite"
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 VALIDATION_STATUSES = {"unreviewed", "keep", "review", "remove", "removed"}
 
 
@@ -89,6 +89,7 @@ class ReputationDatabase:
     def connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
     def initialize(self) -> None:
@@ -151,15 +152,6 @@ class ReputationDatabase:
             self._ensure_column(con, "scan_history", "device_key", "TEXT NOT NULL DEFAULT ''")
             con.execute(
                 """
-                CREATE TABLE IF NOT EXISTS app_validations(
-                    package TEXT PRIMARY KEY,
-                    status TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            con.execute(
-                """
                 CREATE TABLE IF NOT EXISTS scan_apps(
                     scan_id INTEGER NOT NULL,
                     package TEXT NOT NULL,
@@ -173,12 +165,53 @@ class ReputationDatabase:
                 )
                 """
             )
+            self._migrate_app_validations(con)
             con.execute("CREATE INDEX IF NOT EXISTS idx_scan_history_device ON scan_history(device_key, id DESC)")
             con.executemany(
                 "INSERT OR IGNORE INTO whitelist(package, label, reason) VALUES(?, ?, ?)",
                 DEFAULT_WHITELIST,
             )
             con.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
+
+    def _migrate_app_validations(self, con: sqlite3.Connection) -> None:
+        columns = {str(row[1]) for row in con.execute("PRAGMA table_info(app_validations)")}
+        if columns and "scan_id" not in columns:
+            con.execute("ALTER TABLE app_validations RENAME TO app_validations_v2")
+
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_validations(
+                scan_id INTEGER NOT NULL,
+                package TEXT NOT NULL,
+                status TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(scan_id, package),
+                FOREIGN KEY(scan_id, package) REFERENCES scan_apps(scan_id, package) ON DELETE CASCADE
+            )
+            """
+        )
+
+        legacy_exists = con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'app_validations_v2'"
+        ).fetchone()
+        if not legacy_exists:
+            return
+
+        con.execute(
+            """
+            INSERT OR REPLACE INTO app_validations(scan_id, package, status, updated_at)
+            SELECT
+                scan_apps.scan_id,
+                scan_apps.package,
+                scan_apps.validation_status,
+                COALESCE(app_validations_v2.updated_at, scan_history.date, '')
+            FROM scan_apps
+            JOIN scan_history ON scan_history.id = scan_apps.scan_id
+            LEFT JOIN app_validations_v2 ON app_validations_v2.package = scan_apps.package
+            WHERE scan_apps.validation_status IN ('keep', 'review', 'remove', 'removed')
+            """
+        )
+        con.execute("DROP TABLE app_validations_v2")
 
     def _ensure_column(self, con: sqlite3.Connection, table: str, column: str, definition: str) -> None:
         columns = {str(row[1]) for row in con.execute(f"PRAGMA table_info({table})")}
@@ -399,29 +432,36 @@ class ReputationDatabase:
             else:
                 con.execute("DELETE FROM app_notes WHERE package = ?", (package,))
 
-    def validation_for(self, package: str) -> str:
+    def validation_for(self, scan_id: int, package: str) -> str:
         with self.connect() as con:
-            row = con.execute("SELECT status FROM app_validations WHERE package = ?", (package,)).fetchone()
+            row = con.execute(
+                "SELECT status FROM app_validations WHERE scan_id = ? AND package = ?",
+                (scan_id, package),
+            ).fetchone()
         return normalize_validation(row["status"] if row else "unreviewed")
 
-    def set_validation(self, package: str, status: str, updated_at: str) -> None:
+    def set_validation(self, scan_id: int, package: str, status: str, updated_at: str) -> None:
         normalized = normalize_validation(status)
         with self.connect() as con:
             if normalized == "unreviewed":
-                con.execute("DELETE FROM app_validations WHERE package = ?", (package,))
+                con.execute(
+                    "DELETE FROM app_validations WHERE scan_id = ? AND package = ?",
+                    (scan_id, package),
+                )
             else:
                 con.execute(
-                    "INSERT OR REPLACE INTO app_validations(package, status, updated_at) VALUES(?, ?, ?)",
-                    (package, normalized, updated_at),
+                    """
+                    INSERT OR REPLACE INTO app_validations(scan_id, package, status, updated_at)
+                    VALUES(?, ?, ?, ?)
+                    """,
+                    (scan_id, package, normalized, updated_at),
                 )
             con.execute(
                 """
                 UPDATE scan_apps SET validation_status = ?
-                WHERE package = ? AND scan_id = (
-                    SELECT MAX(scan_id) FROM scan_apps WHERE package = ?
-                )
+                WHERE scan_id = ? AND package = ?
                 """,
-                (normalized, package, package),
+                (normalized, scan_id, package),
             )
 
 

@@ -37,9 +37,6 @@ class FakeDB:
     def note_for(self, package: str) -> str:
         return ""
 
-    def validation_for(self, package: str) -> str:
-        return "unreviewed"
-
     def record_scan(
         self,
         date: str,
@@ -79,6 +76,7 @@ class ScanWorkflowTests(unittest.TestCase):
         self.assertEqual(result.rows[0]["app"].package_name, "com.fast.cleaner")
         self.assertTrue(db.recorded)
         self.assertTrue(db.snapshots_recorded)
+        self.assertEqual(result.scan_id, 1)
         self.assertEqual(result.comparison, ScanComparison(current_scan_id=1, previous_scan_id=None))
         self.assertEqual(progress_events, [(1, 1, "com.fast.cleaner")])
 
@@ -96,6 +94,7 @@ class ScanWorkflowTests(unittest.TestCase):
 
         self.assertTrue(result.cancelled)
         self.assertFalse(db.recorded)
+        self.assertIsNone(result.scan_id)
         self.assertIsNone(result.comparison)
 
 

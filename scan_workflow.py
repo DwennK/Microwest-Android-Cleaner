@@ -20,6 +20,7 @@ class ScanResult:
     errors: list[str] = field(default_factory=list)
     cancelled: bool = False
     total: int = 0
+    scan_id: int | None = None
     comparison: ScanComparison | None = None
 
 
@@ -68,13 +69,13 @@ def run_scan(
                 "ai": None,
                 "ai_text": "",
                 "note": db.note_for(app.package_name),
-                "validation": db.validation_for(app.package_name),
+                "validation": "unreviewed",
             }
         )
 
     result.rows.sort(key=lambda item: item["risk"].score, reverse=True)
     if result.rows and not result.cancelled:
-        scan_id = db.record_scan(
+        result.scan_id = db.record_scan(
             datetime.now().isoformat(timespec="seconds"),
             device.model,
             device.android_version,
@@ -88,6 +89,6 @@ def run_scan(
             ),
             device_serial=device.serial or serial,
         )
-        db.record_scan_apps(scan_id, result.rows)
-        result.comparison = db.comparison_for_scan(scan_id)
+        db.record_scan_apps(result.scan_id, result.rows)
+        result.comparison = db.comparison_for_scan(result.scan_id)
     return result

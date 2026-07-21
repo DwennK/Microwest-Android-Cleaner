@@ -151,6 +151,7 @@ class ScanWorker(QThread):
                     "errors": result.errors,
                     "cancelled": result.cancelled,
                     "total": result.total,
+                    "scan_id": result.scan_id,
                     "comparison": result.comparison,
                 }
             )
@@ -186,10 +187,11 @@ class UninstallWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, serial: str, apps: list[AppInfo]) -> None:
+    def __init__(self, serial: str, apps: list[AppInfo], scan_id: int | None) -> None:
         super().__init__()
         self.serial = serial
         self.apps = apps
+        self.scan_id = scan_id
 
     def run(self) -> None:
         try:
@@ -205,8 +207,13 @@ class UninstallWorker(QThread):
                     app.display_name(),
                     result_text,
                 )
-                if ok:
-                    db.set_validation(app.package_name, "removed", datetime.now().isoformat(timespec="seconds"))
+                if ok and self.scan_id is not None:
+                    db.set_validation(
+                        self.scan_id,
+                        app.package_name,
+                        "removed",
+                        datetime.now().isoformat(timespec="seconds"),
+                    )
                 results.append(
                     {"package": app.package_name, "label": app.display_name(), "result": result_text, "success": ok}
                 )

@@ -185,6 +185,7 @@ class MainWindow(QMainWindow):
         self.rows: list[dict[str, Any]] = []
         self.uninstalled: list[dict[str, str]] = []
         self.scan_comparison: ScanComparison | None = None
+        self.current_scan_id: int | None = None
         self.current_worker: QThread | None = None
         self.scan_worker: ScanWorker | None = None
         self.refresh_worker: DevicesRefreshWorker | None = None
@@ -633,6 +634,7 @@ class MainWindow(QMainWindow):
         rows: list[dict[str, Any]] = payload.get("rows", [])
         errors: list[str] = payload.get("errors", [])
         cancelled = bool(payload.get("cancelled"))
+        self.current_scan_id = payload.get("scan_id")
         self.scan_comparison = payload.get("comparison")
         self.rows = rows
         self.populate_table()
@@ -907,6 +909,13 @@ class MainWindow(QMainWindow):
         logging.info("Open settings result for %s: %s", package, message)
 
     def uninstall_selected(self) -> None:
+        if self.current_scan_id is None:
+            QMessageBox.warning(
+                self,
+                "Scan complet requis",
+                "Terminez un scan complet avant toute désinstallation afin de conserver une validation traçable.",
+            )
+            return
         selected = self.selected_rows()
         allowed = [r for r in selected if not r["app"].is_system_app and r["risk"].recommended_action != "do_not_touch"]
         blocked = [r for r in selected if r not in allowed]
@@ -935,9 +944,10 @@ class MainWindow(QMainWindow):
         self.set_busy(True, "Désinstallation en cours...")
         timestamp = datetime.now().isoformat(timespec="seconds")
         for row in allowed:
-            self.db.set_validation(row["app"].package_name, "remove", timestamp)
+            if self.current_scan_id is not None:
+                self.db.set_validation(self.current_scan_id, row["app"].package_name, "remove", timestamp)
             row["validation"] = "remove"
-        worker = UninstallWorker(self.device.serial, [r["app"] for r in allowed])
+        worker = UninstallWorker(self.device.serial, [r["app"] for r in allowed], self.current_scan_id)
         worker.succeeded.connect(self.on_uninstall_finished)
         worker.failed.connect(self.on_worker_failed)
         worker.finished.connect(lambda: self.set_busy(False))
@@ -1080,6 +1090,7 @@ class MainWindow(QMainWindow):
         ]
         self.rows.sort(key=lambda item: item["risk"].score, reverse=True)
         self.uninstalled = []
+        self.current_scan_id = None
         self.scan_comparison = None
         self.on_device_detected({"device": self.device, "devices": [ADBDevice("DEMO-ANDROID", "device", "mode:demo")]})
         self.populate_table()
@@ -1093,7 +1104,8 @@ class MainWindow(QMainWindow):
         self.db = ReputationDatabase()
         for row in self.rows:
             row["risk"] = evaluate_app(row["app"], self.db.reputation_for(row["app"].package_name))
-            row["validation"] = self.db.validation_for(row["app"].package_name)
+            if self.current_scan_id is not None:
+                row["validation"] = self.db.validation_for(self.current_scan_id, row["app"].package_name)
         self.populate_table()
         self.status_label.setText("Blacklist/whitelist rechargées.")
 
@@ -1166,10 +1178,21 @@ class MainWindow(QMainWindow):
 
     def set_row_validation(self, row_data: dict[str, Any], status: str) -> None:
         app = row_data["app"]
-        self.db.set_validation(app.package_name, status, datetime.now().isoformat(timespec="seconds"))
+        if self.current_scan_id is not None:
+            self.db.set_validation(
+                self.current_scan_id,
+                app.package_name,
+                status,
+                datetime.now().isoformat(timespec="seconds"),
+            )
         row_data["validation"] = status
         self.populate_table()
-        self.status_label.setText(f"Validation mise à jour : {app.package_name} — {display_validation(status)}")
+        if self.current_scan_id is None:
+            self.status_label.setText(
+                f"Validation locale non enregistrée : {app.package_name} — {display_validation(status)}"
+            )
+        else:
+            self.status_label.setText(f"Validation mise à jour : {app.package_name} — {display_validation(status)}")
 
     def open_details_for_cell(self, row: int, _column: int) -> None:
         package_item = self.table.item(row, self.COL_PACKAGE)
