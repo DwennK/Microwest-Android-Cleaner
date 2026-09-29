@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -38,10 +39,25 @@ class ApkMetadataExtractor:
             self.project_dir / "tools" / executable_name,
             self.project_dir / "adb" / executable_name,
         ]
+        if os.environ.get("AAPT2_PATH"):
+            candidates.append(Path(os.environ["AAPT2_PATH"]).expanduser())
+        from_path = shutil.which("aapt2")
+        if from_path:
+            candidates.append(Path(from_path))
+        roots = [Path(value).expanduser() for key in ("ANDROID_HOME", "ANDROID_SDK_ROOT") if (value := os.environ.get(key))]
+        if sys.platform == "darwin":
+            candidates.extend([Path("/opt/homebrew/bin/aapt2"), Path("/usr/local/bin/aapt2")])
+            roots.append(Path.home() / "Library/Android/sdk")
+        elif sys.platform == "win32" and os.environ.get("LOCALAPPDATA"):
+            roots.append(Path(os.environ["LOCALAPPDATA"]) / "Android/sdk")
+        else:
+            roots.append(Path.home() / "Android/Sdk")
+        for root in roots:
+            candidates.extend(sorted((root / "build-tools").glob(f"*/{executable_name}"), reverse=True))
         for candidate in candidates:
-            if candidate.exists():
+            if candidate.is_file() and (sys.platform == "win32" or os.access(candidate, os.X_OK)):
                 return str(candidate)
-        return shutil.which("aapt2") or ""
+        return ""
 
     def extract(self, apk_path: Path) -> ApkMetadata:
         if not self.aapt2_path:

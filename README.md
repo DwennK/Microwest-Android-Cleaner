@@ -151,6 +151,14 @@ Pendant le scan, l'application récupère temporairement le fichier APK install�
 
 Si `aapt2` est absent, le scan continue avec un nom dérivé du package.
 
+Pour installer l'outil officiel seul, sans Android Studio :
+
+```sh
+.venv/bin/python packaging/install_aapt2.py
+```
+
+Le script utilise Google Maven, une version fixe et des empreintes SHA-256 par plateforme. Il vérifie que le binaire fonctionne et conserve un binaire existant. `setup_mac.command` effectue cette installation. Sur une installation existante, relancer le script ci-dessus puis rescanner. L'outil est aussi recherché via `AAPT2_PATH`, le `PATH` et les dossiers `build-tools` des SDK Android. Les bundles doivent être reconstruits avec `--include-aapt2` pour l'embarquer. [Distribution officielle AAPT2](https://developer.android.com/tools/aapt2).
+
 Quand une icône raster est disponible dans l'APK (`png`, `webp`, `jpg`), elle est extraite dans :
 
 ```text
