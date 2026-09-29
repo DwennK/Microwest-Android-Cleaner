@@ -8,9 +8,11 @@ from unittest.mock import patch
 from adb_client import (
     ADBClient,
     ADBDevice,
+    ADBError,
     ADBNotFoundError,
     parse_appop_mode,
     parse_component_packages,
+    parse_default_home,
     parse_device_admin_packages,
     parse_devices_l,
     parse_launcher_packages,
@@ -97,6 +99,21 @@ class ADBClientDiscoveryTests(unittest.TestCase):
 
 
 class ADBClientParserTests(unittest.TestCase):
+    def test_default_home_distinguishes_real_home_resolver_and_missing_output(self) -> None:
+        self.assertEqual(parse_default_home("priority=0\ncom.sec.android.app.launcher/.Launcher\n"), "com.sec.android.app.launcher")
+        for output in ("android/com.android.internal.app.ResolverActivity", "No activity found", "Error: permission denied", ""):
+            self.assertIsNone(parse_default_home(output))
+
+    def test_home_reads_are_for_current_user_and_failures_remain_unknown(self) -> None:
+        client = object.__new__(ADBClient)
+        with patch.object(client, "shell", side_effect=["example.pdf/.Home", "example.pdf/.Home"]) as shell:
+            self.assertEqual(client.home_state("test"), ({"example.pdf"}, "example.pdf"))
+            for call in shell.call_args_list:
+                self.assertIn("current", call.args[1])
+                self.assertIn("android.intent.category.HOME", call.args[1])
+        with patch.object(client, "shell", side_effect=ADBError("unavailable")):
+            self.assertEqual(client.home_state("test"), (None, None))
+
     def test_parse_devices_l_with_details(self) -> None:
         output = """List of devices attached
 R3CTB058TSV        device usb:336592896X product:r9sxxx model:SM_G960F device:starlte transport_id:1

@@ -41,6 +41,8 @@ def run_scan(
     launcher_packages = adb.list_launcher_packages(serial)
     active_service_reader = getattr(adb, "active_service_capabilities", None)
     active_services = active_service_reader(serial) if callable(active_service_reader) else {}
+    home_reader = getattr(adb, "home_state", None)
+    home_packages, default_home = home_reader(serial) if callable(home_reader) else (None, None)
     result = ScanResult(total=len(packages))
 
     for index, (package, installer) in enumerate(packages.items(), start=1):
@@ -57,6 +59,8 @@ def run_scan(
             include_system=include_system,
             launcher_packages=launcher_packages,
             active_services=active_services,
+            home_packages=home_packages,
+            default_home=default_home,
         )
         if app.dumpsys_error:
             result.errors.append(f"{package}: {app.dumpsys_error}")

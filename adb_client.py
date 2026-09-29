@@ -267,6 +267,25 @@ class ADBClient:
     def dumpsys_package(self, serial: str, package: str) -> str:
         return self.shell(serial, ["dumpsys", "package", package], timeout=15)
 
+    def home_state(self, serial: str) -> tuple[set[str] | None, str | None]:
+        """Read HOME handlers and the selected home for the current Android user."""
+        intent = ["--brief", "--user", "current", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME"]
+        packages = None
+        default = None
+        try:
+            output = self.shell(serial, ["cmd", "package", "query-activities", *intent], timeout=15)
+            parsed = parse_launcher_packages(output)
+            if parsed or "No activities found" in output:
+                packages = parsed
+        except ADBError:
+            LOGGER.debug("HOME handlers unavailable")
+        try:
+            output = self.shell(serial, ["cmd", "package", "resolve-activity", *intent], timeout=15)
+            default = parse_default_home(output)
+        except ADBError:
+            LOGGER.debug("Default HOME unavailable")
+        return packages, default
+
     def active_service_capabilities(self, serial: str) -> dict[str, set[str]]:
         capabilities: dict[str, set[str]] = {}
         secure_settings = {
@@ -356,6 +375,14 @@ def parse_launcher_packages(output: str) -> set[str]:
                 packages.add(match.group(1))
                 break
     return packages
+
+
+def parse_default_home(output: str) -> str | None:
+    for line in output.splitlines():
+        match = re.fullmatch(r"([\w]+(?:\.[\w]+)+)/([\w.$]+)", line.strip())
+        if match and not match.group(2).endswith(("ResolverActivity", "ChooserActivity")):
+            return match.group(1)
+    return None
 
 
 def parse_component_packages(output: str) -> set[str]:

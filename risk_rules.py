@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app_triage import unwanted_profile
 from scanner import AppInfo, installed_recently
 
 SAFE_INSTALLERS = {
@@ -21,13 +22,15 @@ OFFICIAL_PREFIXES = (
     "com.microsoft.",
 )
 
-TRUSTED_OFFICIAL_PREFIXES = (
-    "com.android.",
-    "com.google.android.",
-    "com.samsung.android.",
-    "com.sec.android.",
-    "com.microsoft.",
-)
+# Identifiers already supported by the local reputation catalogue. A namespace
+# alone is not an identity check; arbitrary com.google.* user apps get no exemption.
+TRUSTED_OFFICIAL_PACKAGES = {
+    "com.google.android.keep", "com.google.android.contacts", "com.google.android.dialer",
+    "com.google.android.apps.photos", "com.google.android.apps.maps", "com.google.android.gm",
+    "com.google.android.youtube", "com.google.android.calendar", "com.google.android.apps.messaging",
+    "com.sec.android.easyMover", "com.sec.android.app.sbrowser", "com.sec.android.app.samsungapps",
+    "com.samsung.android.app.notes", "com.microsoft.office.outlook",
+}
 
 KNOWN_SYSTEM_SAFE_PREFIXES = (
     "android",
@@ -378,6 +381,15 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
         score -= 80
         reasons.append("Namespace officiel installé via une source fiable.")
 
+    profile = unwanted_profile(app)
+    if not app.is_system_app and not trusted_official and not reputation.whitelisted:
+        score = max(score, profile.score_floor)
+        reasons.extend(profile.reasons)
+        if app.is_home_app and profile.score_floor < 60 and not reputation.blacklisted:
+            score = min(score, 59)
+    if reputation.blacklisted and not reputation.whitelisted:
+        score = max(score, 60)
+
     score = max(0, min(100, score))
     category, action = classify(score, app, reputation)
     if not reasons:
@@ -386,12 +398,20 @@ def evaluate_app(app: AppInfo, reputation: ReputationLookup | None = None) -> Ri
 
 
 def classify(score: int, app: AppInfo, reputation: ReputationLookup) -> tuple[str, str]:
-    if app.is_system_app and is_known_system_package(app.package_name):
+    if app.is_system_app:
         return "do_not_touch_system", "do_not_touch"
+    if reputation.whitelisted:
+        return "safe", "keep"
+    if reputation.blacklisted:
+        return "local_blacklist", "suggest_uninstall"
     if is_trusted_official_package(app) and not reputation.blacklisted:
         if app.has_accessibility or app.has_device_admin or app.has_notification_listener or score >= 50:
             return "trusted_official_review", "review"
         return "trusted_official", "keep"
+    if unwanted_profile(app).score_floor >= 60:
+        return "unwanted_utility", "suggest_uninstall"
+    if app.is_home_app:
+        return "unknown_review_manually", "review"
     if app.installer in SAFE_INSTALLERS and has_declared_sensitive_review_signal(app):
         return "unknown_review_manually", "review"
     if reputation.whitelisted or score < 15:
@@ -443,7 +463,7 @@ def label_and_package(app: AppInfo) -> str:
 
 
 def contains_any(text: str, words: tuple[str, ...]) -> bool:
-    return any(word in text for word in words)
+    return any(re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])", text) for word in words)
 
 
 def contains_scam_bait(text: str) -> bool:
@@ -503,7 +523,7 @@ def is_official_package(app: AppInfo) -> bool:
 def is_trusted_official_package(app: AppInfo) -> bool:
     if app.is_system_app and is_known_system_package(app.package_name):
         return True
-    return app.package_name.startswith(TRUSTED_OFFICIAL_PREFIXES) and app.installer in SAFE_INSTALLERS
+    return app.package_name in TRUSTED_OFFICIAL_PACKAGES and app.installer in SAFE_INSTALLERS
 
 
 def impersonates_official_namespace(app: AppInfo) -> bool:

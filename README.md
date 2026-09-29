@@ -305,6 +305,20 @@ Pour les accès spéciaux, l'application effectue uniquement des lectures ADB no
 
 ## Analyse IA optionnelle
 
+### Tri des applications indésirables
+
+Le tri local applique la politique de nettoyage de l'atelier, indépendamment de l'IA et de Google Play :
+
+- cleaners, boosters, optimiseurs et économiseurs de batterie tiers : proposés à la suppression ;
+- utilitaires PDF/QR au nom racoleur, anciens QR ciblant Android 9 ou antérieur, utilitaires cachés ou avec accès intrusifs actifs : prioritaires ;
+- noms rapportés par le technicien (`Rotate Link`, `Gold Miner`, `#GALLERY`, `#CONTACT`) : proposés au retrait avec vérification d'identité, sans prétendre à une signature de malware ;
+- utilitaire occupant le rôle d'écran d'accueil : priorité élevée et indication de rétablir l'accueil souhaité avant suppression ;
+- lecteur ordinaire, galerie/contacts tiers et launcher dédié : vérification, sans suppression proposée sur le seul rôle.
+
+Les rôles HOME et l'accueil actif sont lus par ADB pour l'utilisateur Android courant. Une lecture impossible reste « non vérifié ». Le statut apparaît dans les détails et est transmis à l'IA. Les composants système restent protégés et la whitelist prime sur les profils. La blacklist locale peut proposer un retrait même pour une application Google Play. Ce tri exprime un choix de nettoyage et des suspicions, pas une preuve que l'application a affiché une publicité. Il ne supprime rien sans validation.
+
+### Analyse complémentaire
+
 L'analyse IA utilise OpenAI par défaut, ou MiniMax si `AI_PROVIDER=minimax` est configuré. Le provider, la clé API, le modèle et la base URL peuvent aussi être choisis dans l'onglet `Paramètres`. Les réglages visibles dans l'interface sont transmis tels quels au worker d'analyse.
 
 L'IA examine toutes les applications utilisateur, même avec un score local de zéro, par lots de 20. Elle recherche les profils de faux utilitaires (lecteurs PDF racoleurs, clones de galerie/contacts, cleaners) en croisant leur identité et les métadonnées disponibles. L'inventaire des applications du scan est fourni pour comparaison entre les lots. Elle peut suggérer une suppression sans permission dangereuse, sur un faisceau d'indices, mais un nom générique seul ne constitue pas une signature de malware. Il s'agit d'un triage textuel : aucune analyse visuelle des icônes ni recherche Internet n'est effectuée.

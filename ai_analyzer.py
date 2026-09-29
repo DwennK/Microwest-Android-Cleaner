@@ -9,6 +9,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from app_triage import unwanted_profile
 from risk_rules import ReputationLookup, RiskResult
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +36,18 @@ SYSTEM_PROMPT = (
     "Utilise keep pour une app cohérente, review si l'identité est insuffisante, suggest_uninstall pour "
     "un faux utilitaire probablement indésirable (score >= 60, confiance medium ou high). "
     "Retourne exactement un verdict par package demandé, avec une raison française concrète. "
+    "POLITIQUE ATELIER : les cleaners/boosters/optimiseurs tiers sont indésirables et à proposer à la suppression, "
+    "même installés via Google Play et sans permission sensible. Protège l'entretien système Samsung et les apps validées. "
+    "Examine aussi les anciens lecteurs QR, ALL PDF READER, PDF READER ALL PRO, #GALLERY, #CONTACT, "
+    "Rotate Link, Gold Miner et les jeux promettant argent/récompenses. Ces noms proviennent de l'expérience "
+    "du technicien, pas d'une base de malwares certifiée. Propose leur retrait lorsqu'ils correspondent au profil "
+    "indésirable ; précise une éventuelle homonymie. Généralise aux variantes au lieu de chercher seulement ces mots exacts. "
+    "Une application PDF/QR/galerie occupant le rôle HOME est une incohérence forte : proposer son retrait et "
+    "rétablir l'accueil souhaité. Un launcher dédié choisi par le client n'est pas malveillant par sa fonction. "
+    "Les champs profil_atelier exposent une politique de tri, pas des preuves d'affichage de publicité. "
+    "Distingue indésirable/inutile/publicitaire probable et malware confirmé. Une faible réputation inconnue ne "
+    "doit pas bloquer une suggestion de nettoyage argumentée. N'accuse pas un lecteur PDF cohérent, un QR open-source "
+    "ou un jeu normal sur leur seul rôle. L'absence de métadonnées n'est pas une permission dangereuse. "
     "Réponds uniquement en JSON valide."
 )
 
@@ -174,6 +187,7 @@ class AIAnalyzer:
 def ai_payload_from_row(row: dict[str, Any]) -> dict[str, Any]:
     app = row["app"]
     risk = row.get("local_risk", row["risk"])
+    profile = unwanted_profile(app)
     return {
         "app_name": app.display_name(),
         "app_name_source": app.app_label_source,
@@ -184,6 +198,9 @@ def ai_payload_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "capacites_actives": app.active_capabilities,
         "is_system_app": app.is_system_app,
         "has_launcher_entry": app.has_launcher_entry,
+        "is_home_app": app.is_home_app,
+        "is_default_home": app.is_default_home,
+        "profil_atelier": {"familles": profile.families, "raisons": profile.reasons},
         "hidden_audit": app.hidden_audit,
         "notification_audit": app.notification_audit,
         "local_risk_score": risk.score,

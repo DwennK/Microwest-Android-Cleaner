@@ -88,6 +88,8 @@ def build_app_details_text(row: dict[str, Any]) -> str:
         f"Source du nom : {'APK/aapt2' if app.app_label_source == 'apk' else 'package'}\n"
         f"Icône : {app.icon_path or 'non disponible'}\n"
         f"Launcher visible : {launcher_text(app)}\n"
+        f"Peut remplacer l'accueil : {tri_state_text(app.is_home_app)}\n"
+        f"Écran d'accueil par défaut : {tri_state_text(app.is_default_home)}\n"
         f"Audit app cachée : {', '.join(app.hidden_audit) if app.hidden_audit else 'aucun signal'}\n"
         f"Audit notifications : {', '.join(app.notification_audit) if app.notification_audit else 'aucun signal'}\n"
         f"Package : {app.package_name}\n"
@@ -125,6 +127,10 @@ def display_action(action: str) -> str:
     }.get(action, action)
 
 
+def tri_state_text(value: bool | None) -> str:
+    return "non vérifié" if value is None else "oui" if value else "non"
+
+
 def display_category(category: str) -> str:
     return {
         "do_not_touch_system": "Système protégé",
@@ -137,6 +143,8 @@ def display_category(category: str) -> str:
         "scam_suspect": "Suspect arnaque",
         "adware_suspect": "Suspect pub",
         "ai_unwanted_suspect": "Indésirable probable (IA)",
+        "unwanted_utility": "Indésirable (tri atelier)",
+        "local_blacklist": "Signalée par l'atelier",
     }.get(category, category)
 
 
@@ -951,11 +959,14 @@ class MainWindow(QMainWindow):
             return
 
         packages = "\n".join(f"- {r['app'].display_name()} ({r['app'].package_name})" for r in allowed)
+        home_notice = ""
+        if any(row["app"].is_default_home for row in allowed):
+            home_notice = "\n\nLa sélection contient l'écran d'accueil actuel. Rétablissez d'abord l'accueil souhaité (par exemple One UI Home) dans les applications par défaut du téléphone."
         answer = QMessageBox.question(
             self,
             "Validation humaine obligatoire",
             "Confirmez-vous la désinstallation pour l'utilisateur 0 des applications suivantes ?\n\n"
-            f"{packages}\n\nAucune suppression automatique ne sera lancée sans cette validation.",
+            f"{packages}{home_notice}\n\nAucune suppression automatique ne sera lancée sans cette validation.",
         )
         if answer != QMessageBox.Yes:
             return

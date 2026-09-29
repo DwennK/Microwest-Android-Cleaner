@@ -49,6 +49,8 @@ class AppInfo:
     icon_path: str = ""
     icon_source: str = ""
     has_launcher_entry: bool | None = None
+    is_home_app: bool | None = None
+    is_default_home: bool | None = None
     hidden_audit: list[str] = field(default_factory=list)
     notification_audit: list[str] = field(default_factory=list)
     installer: str = ""
@@ -93,6 +95,8 @@ class AppScanner:
         launcher_packages = self.adb_client.list_launcher_packages(serial)
         active_reader = getattr(self.adb_client, "active_service_capabilities", None)
         active_capabilities = active_reader(serial) if callable(active_reader) else {}
+        home_reader = getattr(self.adb_client, "home_state", None)
+        home_packages, default_home = home_reader(serial) if callable(home_reader) else (None, None)
         apps: list[AppInfo] = []
 
         for package, installer in packages.items():
@@ -103,6 +107,8 @@ class AppScanner:
                 include_system=include_system,
                 launcher_packages=launcher_packages,
                 active_services=active_capabilities,
+                home_packages=home_packages,
+                default_home=default_home,
             )
             apps.append(app)
         return apps
@@ -115,8 +121,14 @@ class AppScanner:
         include_system: bool = False,
         launcher_packages: set[str] | None = None,
         active_services: dict[str, set[str]] | None = None,
+        home_packages: set[str] | None = None,
+        default_home: str | None = None,
     ) -> AppInfo:
         app = AppInfo(package_name=package, installer=installer, is_system_app=include_system)
+        app.is_home_app = package in home_packages if home_packages is not None else None
+        app.is_default_home = package == default_home if default_home else None
+        if app.is_default_home:
+            app.is_home_app = True
         try:
             if launcher_packages is not None:
                 app.has_launcher_entry = package in launcher_packages

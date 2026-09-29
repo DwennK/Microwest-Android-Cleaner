@@ -102,6 +102,8 @@ def build_action_plan(
         )
         if row.get("note"):
             lines.append(f"  Note : {row['note']}")
+        if app.is_default_home:
+            lines.append("  Écran d'accueil actuel : rétablir l'accueil souhaité dans les applications par défaut avant suppression.")
     lines.extend(["", "Applications à vérifier manuellement"])
     if not review_rows:
         lines.append("- Aucune.")

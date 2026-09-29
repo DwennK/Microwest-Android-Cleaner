@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from adb_client import DeviceInfo
 from database import ScanComparison
@@ -58,6 +59,15 @@ class FakeDB:
 
 
 class ScanWorkflowTests(unittest.TestCase):
+    def test_home_context_reaches_scan_rows_and_risk(self) -> None:
+        adb = FakeADB()
+        with patch.object(adb, "home_state", return_value=({"com.fast.cleaner"}, "com.fast.cleaner"), create=True):
+            result = run_scan("SERIAL", False, DeviceInfo(), adb=adb, db=FakeDB())
+        app = result.rows[0]["app"]
+        self.assertTrue(app.is_home_app)
+        self.assertTrue(app.is_default_home)
+        self.assertGreaterEqual(result.rows[0]["risk"].score, 90)
+
     def test_run_scan_builds_rows_and_records_history(self) -> None:
         db = FakeDB()
         progress_events = []
