@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from adb_client import ADBDevice, DeviceInfo
-from ai_analyzer import AIAnalyzer, AIResult
+from ai_analyzer import AIAnalyzer, AIResult, apply_ai_result
 from app_config import (
     LOG_DIR,
     PROJECT_DIR,
@@ -98,6 +98,7 @@ def build_app_details_text(row: dict[str, Any]) -> str:
         f"Date installation : {app.install_date or 'non disponible'}\n"
         f"État : {app.enabled or 'non disponible'}\n\n"
         f"Score : {risk.score}\n"
+        f"Score local avant IA : {row.get('local_risk', risk).score}\n"
         f"Catégorie : {risk.category}\n"
         f"Action proposée : {risk.recommended_action}\n"
         f"Raisons :\n- " + "\n- ".join(risk.reasons) + "\n\n"
@@ -135,6 +136,7 @@ def display_category(category: str) -> str:
         "spyware_suspect": "Suspect spyware",
         "scam_suspect": "Suspect arnaque",
         "adware_suspect": "Suspect pub",
+        "ai_unwanted_suspect": "Indésirable probable (IA)",
     }.get(category, category)
 
 
@@ -314,7 +316,9 @@ class MainWindow(QMainWindow):
         if self.ai_analyzer.enabled:
             self.ai_button.setEnabled(True)
             self.ai_button.setText(f"Analyser avec IA ({self.ai_analyzer.provider_label})")
-            self.ai_button.setToolTip(f"Analyse les apps déjà suspectes avec {self.ai_analyzer.provider_label}.")
+            self.ai_button.setToolTip(
+                f"Repère les faux utilitaires et apps indésirables parmi toutes les apps utilisateur avec {self.ai_analyzer.provider_label}."
+            )
         else:
             key_name = "MINIMAX_API_KEY" if self.ai_analyzer.provider == "minimax" else "OPENAI_API_KEY"
             self.ai_button.setEnabled(False)
@@ -857,8 +861,11 @@ class MainWindow(QMainWindow):
         if not self.rows:
             QMessageBox.information(self, "Scan requis", "Scannez les applications avant de lancer l'analyse IA.")
             return
-        self.set_busy(True, "Analyse IA des apps suspectes...")
+        self.set_busy(True, "Analyse IA de toutes les apps utilisateur...")
         worker = AIWorker(self.rows, self.ui_settings)
+        worker.progress.connect(
+            lambda done, total: self.status_label.setText(f"Analyse IA : {done}/{total} applications examinées...")
+        )
         worker.succeeded.connect(self.on_ai_finished)
         worker.failed.connect(self.on_worker_failed)
         worker.finished.connect(lambda: self.set_busy(False))
@@ -870,14 +877,26 @@ class MainWindow(QMainWindow):
             app = row["app"]
             ai_result = results.get(app.package_name)
             if ai_result:
-                row["ai"] = ai_result
-                row["ai_text"] = (
-                    f"{ai_result.risk_score}/100 {ai_result.category} "
-                    f"({ai_result.confidence}) - {ai_result.reason_fr}"
-                )
+                apply_ai_result(row, ai_result, self.db.reputation_for(app.package_name))
         self.populate_table()
-        self.status_label.setText(f"Analyse IA terminée : {len(results)} résultat(s).")
+        self.table.setColumnHidden(12, False)
+        missing_labels = sum(row["app"].app_label_source != "apk" for row in self.rows if row["app"].package_name in results)
+        status = f"Analyse IA terminée : {len(results)} applications examinées, priorités mises à jour."
+        if missing_labels:
+            status += f" {missing_labels} nom(s) réel(s) indisponible(s) : analyse limitée au package et aux métadonnées."
+        self.status_label.setText(status)
+        self.persist_analysis()
         self.tabs.setCurrentIndex(self.results_tab_index)
+
+    def persist_analysis(self) -> None:
+        if self.current_scan_id is None:
+            return
+        try:
+            self.db.update_scan_analysis(self.current_scan_id, self.rows)
+            self.scan_comparison = self.db.comparison_for_scan(self.current_scan_id)
+        except Exception:  # noqa: BLE001 - retain usable results even if history cannot be saved.
+            logging.exception("Unable to save analysis")
+            self.status_label.setText(self.status_label.text() + " Historique non enregistré.")
 
     def open_selected_app_settings(self) -> None:
         row_data = self.current_or_checked_row()
@@ -1103,11 +1122,16 @@ class MainWindow(QMainWindow):
     def reload_reputation(self) -> None:
         self.db = ReputationDatabase()
         for row in self.rows:
-            row["risk"] = evaluate_app(row["app"], self.db.reputation_for(row["app"].package_name))
+            reputation = self.db.reputation_for(row["app"].package_name)
+            row["risk"] = evaluate_app(row["app"], reputation)
+            row["local_risk"] = row["risk"]
             if self.current_scan_id is not None:
                 row["validation"] = self.db.validation_for(self.current_scan_id, row["app"].package_name)
+            if row.get("ai"):
+                apply_ai_result(row, row["ai"], reputation)
         self.populate_table()
         self.status_label.setText("Blacklist/whitelist rechargées.")
+        self.persist_analysis()
 
     def open_context_menu(self, position: Any) -> None:
         item = self.table.itemAt(position)
@@ -1186,6 +1210,8 @@ class MainWindow(QMainWindow):
                 datetime.now().isoformat(timespec="seconds"),
             )
         row_data["validation"] = status
+        if row_data.get("ai"):
+            apply_ai_result(row_data, row_data["ai"], self.db.reputation_for(app.package_name))
         self.populate_table()
         if self.current_scan_id is None:
             self.status_label.setText(
@@ -1193,6 +1219,7 @@ class MainWindow(QMainWindow):
             )
         else:
             self.status_label.setText(f"Validation mise à jour : {app.package_name} — {display_validation(status)}")
+        self.persist_analysis()
 
     def open_details_for_cell(self, row: int, _column: int) -> None:
         package_item = self.table.item(row, self.COL_PACKAGE)

@@ -8,7 +8,7 @@ from typing import Any
 from PySide6.QtCore import QThread, Signal
 
 from adb_client import ADBClient, ADBError, ADBNotFoundError, DeviceInfo, parse_devices_l
-from ai_analyzer import AIAnalyzer, ai_payload_from_row, analyze_in_batches
+from ai_analyzer import AIAnalyzer, ai_candidates, analyze_in_batches
 from apk_metadata import ApkMetadataExtractor
 from app_config import portable_runtime_checks
 from database import ReputationDatabase
@@ -163,6 +163,7 @@ class ScanWorker(QThread):
 class AIWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
+    progress = Signal(int, int)
 
     def __init__(self, rows: list[dict[str, Any]], settings: dict[str, Any]) -> None:
         super().__init__()
@@ -172,12 +173,13 @@ class AIWorker(QThread):
     def run(self) -> None:
         try:
             analyzer = AIAnalyzer(self.settings)
-            candidates = [
-                ai_payload_from_row(row)
+            candidates = ai_candidates(self.rows)
+            analyzer.inventory = [
+                {"package_name": row["app"].package_name, "app_name": row["app"].display_name(),
+                 "app_name_source": row["app"].app_label_source, "is_system_app": row["app"].is_system_app}
                 for row in self.rows
-                if row["risk"].score >= 30 and row["risk"].recommended_action != "do_not_touch"
             ]
-            self.succeeded.emit(analyze_in_batches(analyzer, candidates, batch_size=40))
+            self.succeeded.emit(analyze_in_batches(analyzer, candidates, batch_size=20, progress=self.progress.emit))
         except Exception as exc:  # noqa: BLE001 - worker reports failures to the UI.
             logging.exception("AI analysis failed")
             self.failed.emit(f"Analyse IA impossible : {exc}")

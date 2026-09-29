@@ -321,6 +321,21 @@ class ReputationDatabase:
                 values,
             )
 
+    def update_scan_analysis(self, scan_id: int, rows: list[dict[str, Any]]) -> None:
+        """Update triage without replacing technician validations or another scan."""
+        with self.connect() as con:
+            con.executemany(
+                "UPDATE scan_apps SET score = ?, category = ?, action = ? WHERE scan_id = ? AND package = ?",
+                [(row["risk"].score, row["risk"].category, row["risk"].recommended_action,
+                  scan_id, row["app"].package_name) for row in rows],
+            )
+            con.execute(
+                """UPDATE scan_history SET suspicious_count = (
+                    SELECT count(*) FROM scan_apps WHERE scan_id = ? AND score >= 60 AND action != 'do_not_touch'
+                ) WHERE id = ?""",
+                (scan_id, scan_id),
+            )
+
     def comparison_for_scan(self, scan_id: int) -> ScanComparison:
         with self.connect() as con:
             current_history = con.execute(

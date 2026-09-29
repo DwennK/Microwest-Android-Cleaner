@@ -19,6 +19,22 @@ def scan_row(package: str, score: int, action: str = "keep", validation: str = "
 
 
 class ReputationDatabaseTests(unittest.TestCase):
+    def test_ai_updates_only_current_scan_and_preserves_human_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db = ReputationDatabase(Path(temp_dir) / "reputation.sqlite")
+            first = db.record_scan("2026-09-29", "Phone", "14", 1, 0, device_serial="A")
+            second = db.record_scan("2026-09-29", "Phone", "14", 1, 0, device_serial="B")
+            for scan_id in (first, second):
+                db.record_scan_apps(scan_id, [scan_row("test.app", 0)])
+            db.set_validation(first, "test.app", "remove", "2026-09-29")
+            db.update_scan_analysis(first, [scan_row("test.app", 80, "suggest_uninstall")])
+            self.assertEqual(db.validation_for(first, "test.app"), "remove")
+            with db.connect() as con:
+                snapshots = [tuple(row) for row in con.execute("SELECT score, validation_status FROM scan_apps ORDER BY scan_id")]
+                counts = [row[0] for row in con.execute("SELECT suspicious_count FROM scan_history ORDER BY id")]
+            self.assertEqual(snapshots, [(80, "remove"), (0, "unreviewed")])
+            self.assertEqual(counts, [1, 0])
+
     def test_initialize_sets_schema_version_and_default_whitelist(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db = ReputationDatabase(Path(temp_dir) / "reputation.sqlite")

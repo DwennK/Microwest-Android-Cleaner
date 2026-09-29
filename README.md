@@ -295,7 +295,11 @@ Pour les accès spéciaux, l'application effectue uniquement des lectures ADB no
 
 ## Analyse IA optionnelle
 
-L'analyse IA utilise OpenAI par défaut, ou MiniMax si `AI_PROVIDER=minimax` est configuré. Le provider, la clé API, le modèle et la base URL peuvent aussi être choisis dans l'onglet `Paramètres`. Les réglages visibles dans l'interface sont transmis tels quels au worker d'analyse. Si plus de 40 applications nécessitent une analyse, elles sont traitées par lots successifs sans être ignorées.
+L'analyse IA utilise OpenAI par défaut, ou MiniMax si `AI_PROVIDER=minimax` est configuré. Le provider, la clé API, le modèle et la base URL peuvent aussi être choisis dans l'onglet `Paramètres`. Les réglages visibles dans l'interface sont transmis tels quels au worker d'analyse.
+
+L'IA examine toutes les applications utilisateur, même avec un score local de zéro, par lots de 20. Elle recherche les profils de faux utilitaires (lecteurs PDF racoleurs, clones de galerie/contacts, cleaners) en croisant leur identité et les métadonnées disponibles. L'inventaire des applications du scan est fourni pour comparaison entre les lots. Elle peut suggérer une suppression sans permission dangereuse, sur un faisceau d'indices, mais un nom générique seul ne constitue pas une signature de malware. Il s'agit d'un triage textuel : aucune analyse visuelle des icônes ni recherche Internet n'est effectuée.
+
+Les suggestions suffisamment confiantes mettent à jour les scores, priorités, recommandations, exports et l'historique du scan. L'avis local est conservé séparément pendant la session ; les composants système, la whitelist et les validations « Conserver » restent protégés. Une opinion IA favorable n'efface pas un signal local. Aucune suppression n'est automatique. Les réponses illisibles ou restant incomplètes après une reprise sont signalées comme des erreurs, sans appliquer de résultats partiels. Si le vrai nom n'a pas été récupéré depuis l'APK, l'interface indique cette limitation.
 
 Créer un fichier `.env` à côté de `main.py` :
 
