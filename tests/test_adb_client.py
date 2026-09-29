@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from adb_client import (
+    ADBClient,
     ADBDevice,
+    ADBNotFoundError,
     parse_appop_mode,
     parse_component_packages,
     parse_device_admin_packages,
@@ -11,6 +16,84 @@ from adb_client import (
     parse_launcher_packages,
     select_device,
 )
+
+
+class ADBClientDiscoveryTests(unittest.TestCase):
+    def test_find_adb_uses_platform_fallback_when_gui_path_is_minimal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project_dir = Path(directory)
+            homebrew_adb = project_dir / "homebrew" / "bin" / "adb"
+            homebrew_adb.parent.mkdir(parents=True)
+            homebrew_adb.write_text("#!/bin/sh\n", encoding="utf-8")
+            homebrew_adb.chmod(0o755)
+
+            with (
+                patch.dict("os.environ", {}, clear=True),
+                patch("adb_client.sys.platform", "darwin"),
+                patch("adb_client.shutil.which", return_value=None),
+                patch("adb_client.platform_adb_candidates", return_value=(homebrew_adb,)),
+            ):
+                client = ADBClient(project_dir=project_dir)
+
+            self.assertEqual(client.adb_path, str(homebrew_adb.resolve()))
+
+    def test_bundled_adb_keeps_priority_over_environment_and_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundled = root / "adb" / "adb"
+            bundled.parent.mkdir()
+            bundled.touch()
+            bundled.chmod(0o755)
+            alternative = root / "alternative"
+            alternative.touch()
+            alternative.chmod(0o755)
+            with (
+                patch.dict("os.environ", {"ADB_PATH": str(alternative)}, clear=True),
+                patch("adb_client.sys.platform", "darwin"),
+                patch("adb_client.shutil.which", return_value=str(alternative)),
+                patch("adb_client.platform_adb_candidates", return_value=()),
+            ):
+                self.assertEqual(ADBClient(root).adb_path, str(bundled.resolve()))
+
+    def test_environment_locations_work_without_path_on_unix_and_windows(self) -> None:
+        for platform in ("darwin", "win32"):
+            for variable in ("ADB_PATH", "ANDROID_HOME", "ANDROID_SDK_ROOT"):
+                with self.subTest(platform=platform, variable=variable), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    sdk = root / "SDK with spaces"
+                    executable = sdk / "platform-tools" / ("adb.exe" if platform == "win32" else "adb")
+                    executable.parent.mkdir(parents=True)
+                    executable.touch()
+                    executable.chmod(0o644 if platform == "win32" else 0o755)
+                    value = executable if variable == "ADB_PATH" else sdk
+                    with (
+                        patch.dict("os.environ", {variable: str(value)}, clear=True),
+                        patch("adb_client.sys.platform", platform),
+                        patch("adb_client.shutil.which", return_value=None),
+                        patch("adb_client.platform_adb_candidates", return_value=()),
+                    ):
+                        self.assertEqual(ADBClient(root).adb_path, str(executable.resolve()))
+
+    def test_unusable_local_file_falls_back_and_missing_adb_reports_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundled = root / "adb" / "adb"
+            bundled.parent.mkdir()
+            bundled.touch()
+            bundled.chmod(0o644)
+            fallback = root / "valid-adb"
+            fallback.touch()
+            fallback.chmod(0o755)
+            with (
+                patch.dict("os.environ", {"ADB_PATH": str(root / "missing")}, clear=True),
+                patch("adb_client.sys.platform", "darwin"),
+                patch("adb_client.shutil.which", return_value=str(fallback)),
+                patch("adb_client.platform_adb_candidates", return_value=()),
+            ):
+                self.assertEqual(ADBClient(root).adb_path, str(fallback.resolve()))
+                fallback.unlink()
+                with self.assertRaises(ADBNotFoundError):
+                    ADBClient(root)
 
 
 class ADBClientParserTests(unittest.TestCase):

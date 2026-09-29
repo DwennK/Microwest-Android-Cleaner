@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -10,6 +11,23 @@ from pathlib import Path
 
 LOGGER = logging.getLogger(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
+
+
+def platform_adb_candidates() -> tuple[Path, ...]:
+    """Return common ADB locations unavailable to GUI apps with a minimal PATH."""
+    if sys.platform == "darwin":
+        return (
+            Path("/opt/homebrew/bin/adb"),
+            Path("/usr/local/bin/adb"),
+            Path.home() / "Library" / "Android" / "sdk" / "platform-tools" / "adb",
+        )
+    if sys.platform.startswith("linux"):
+        return (
+            Path("/usr/local/bin/adb"),
+            Path("/usr/bin/adb"),
+            Path.home() / "Android" / "Sdk" / "platform-tools" / "adb",
+        )
+    return ()
 
 
 class ADBError(RuntimeError):
@@ -55,13 +73,30 @@ class ADBClient:
 
     def _find_adb(self) -> str:
         bundled_name = "adb.exe" if sys.platform == "win32" else "adb"
-        bundled = self.project_dir / "adb" / bundled_name
-        if bundled.exists():
-            return str(bundled)
+        candidates = [self.project_dir / "adb" / bundled_name]
+
+        explicit_path = os.environ.get("ADB_PATH", "").strip()
+        if explicit_path:
+            candidates.append(Path(explicit_path).expanduser())
+
+        for variable in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+            sdk_root = os.environ.get(variable, "").strip()
+            if sdk_root:
+                candidates.append(Path(sdk_root).expanduser() / "platform-tools" / bundled_name)
 
         from_path = shutil.which("adb")
         if from_path:
-            return from_path
+            candidates.append(Path(from_path))
+
+        candidates.extend(platform_adb_candidates())
+        seen: set[Path] = set()
+        for candidate in candidates:
+            candidate = candidate.resolve()
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            if candidate.is_file() and (sys.platform == "win32" or os.access(candidate, os.X_OK)):
+                return str(candidate)
 
         raise ADBNotFoundError(
             "ADB introuvable. Installez Android Platform Tools et ajoutez adb au PATH, "

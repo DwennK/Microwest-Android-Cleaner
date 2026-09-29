@@ -127,7 +127,9 @@ Sur macOS avec Homebrew :
 brew install android-platform-tools
 ```
 
-L'application cherche d'abord le binaire local adapté au système (`adb/adb.exe` sur Windows, `adb/adb` sur macOS/Linux), puis `adb` dans le `PATH`.
+L'application cherche d'abord le binaire local adapté au système (`adb/adb.exe` sur Windows, `adb/adb` sur macOS/Linux), puis les variables `ADB_PATH`, `ANDROID_HOME` et `ANDROID_SDK_ROOT`, et enfin `adb` dans le `PATH`.
+
+Sur macOS, elle vérifie aussi directement les installations Homebrew (`/opt/homebrew/bin/adb` et `/usr/local/bin/adb`) ainsi que `~/Library/Android/sdk/platform-tools/adb`. Cela permet au bundle lancé depuis Finder de retrouver ADB même lorsque macOS lui fournit un `PATH` minimal.
 
 ## Nom réel des applications avec aapt2
 
