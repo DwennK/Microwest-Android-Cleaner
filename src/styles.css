@@ -1,0 +1,215 @@
+@import "tailwindcss";
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--primary);
+}
+:root {
+  font-family: "Segoe UI", Inter, Arial, sans-serif;
+  --background: #f4f6f9;
+  --foreground: #152b42;
+  --card: #fff;
+  --primary: #087f79;
+  --primary-foreground: #fff;
+  --secondary: #e8f5f2;
+  --secondary-foreground: #086e67;
+  --muted: #edf1f5;
+  --muted-foreground: #627286;
+  --destructive: #b73543;
+  --border: #dce4ec;
+}
+* {
+  box-sizing: border-box;
+  border-color: var(--border);
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+input:not([type="checkbox"]),
+select,
+textarea {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--foreground);
+  min-width: 0;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+input[type="checkbox"] {
+  accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+label {
+  font-size: 13px;
+  font-weight: 600;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+}
+th {
+  padding: 12px 16px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td {
+  padding: 15px 16px;
+  border-bottom: 1px solid #eaf0f4;
+}
+tbody tr:hover {
+  background: #f8fbfc;
+}
+.card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 2px 5px #17334d03;
+}
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  font-weight: 700;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-good {
+  color: #087c68;
+  background: #e7f5ee;
+}
+.badge-warn {
+  color: #93620b;
+  background: #fff4d9;
+}
+.badge-bad {
+  color: #b73543;
+  background: #fdecef;
+}
+.badge-neutral {
+  color: #647386;
+  background: #eef2f6;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 12px;
+  font-size: 13px;
+}
+.detail-grid dt {
+  color: var(--muted-foreground);
+}
+.detail-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.app-shell {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  min-height: 100vh;
+}
+.sidebar {
+  background: #0b2946;
+  color: #bdcbd8;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 9px;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+.nav-item:hover {
+  background: #ffffff0a;
+}
+.nav-item.active {
+  color: white;
+  background: #ffffff12;
+  box-shadow: inset 3px 0 #41c8b7;
+}
+.section-title {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.muted {
+  color: var(--muted-foreground);
+}
+.content {
+  padding: 28px 32px 36px;
+  max-width: 1760px;
+  margin: auto;
+}
+@media (max-width: 1180px) {
+  .app-shell {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+  .content {
+    padding: 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

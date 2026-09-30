@@ -1,0 +1,46 @@
+[package]
+name = "microwest-android-cleaner"
+version = "2.0.0"
+description = "Microwest Android Cleaner"
+edition = "2021"
+default-run = "microwest-android-cleaner"
+
+[features]
+test-support = []
+
+[[bin]]
+name = "process-fixture"
+path = "tests/support/process-fixture.rs"
+required-features = ["test-support"]
+
+[lib]
+name = "microwest_cleaner"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["process", "time", "sync", "io-util", "rt-multi-thread", "macros"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+unicode-normalization = "0.1"
+tempfile = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+csv = "1"
+base64 = "0.22"
+open = "5"
+dotenvy = "0.15"
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1

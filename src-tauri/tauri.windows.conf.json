@@ -1,0 +1,21 @@
+{
+  "bundle": {
+    "resources": {
+      "../adb/adb.exe": "adb/adb.exe",
+      "../adb/AdbWinApi.dll": "adb/AdbWinApi.dll",
+      "../adb/AdbWinUsbApi.dll": "adb/AdbWinUsbApi.dll",
+      "../tools/aapt2.exe": "tools/aapt2.exe",
+      "../adb/NOTICE.txt": "adb/NOTICE.txt",
+      "../tools/aapt2-NOTICE.txt": "tools/aapt2-NOTICE.txt"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["French", "English"],
+        "displayLanguageSelector": true
+      },
+      "wix": { "language": "fr-FR" },
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true }
+    }
+  }
+}

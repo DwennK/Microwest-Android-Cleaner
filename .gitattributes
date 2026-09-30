@@ -1,0 +1,3 @@
+# Preserve upstream Android license notices verbatim.
+adb/NOTICE.txt -text -whitespace
+tools/aapt2-NOTICE.txt -text -whitespace

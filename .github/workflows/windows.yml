@@ -1,0 +1,54 @@
+name: Windows desktop
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Rust stable with checks
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add rustfmt clippy
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --features test-support -- -D warnings
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --features test-support
+      - name: Verify bundled Android tools
+        shell: pwsh
+        run: |
+          $expected = @{
+            'adb/adb.exe' = '957E46B8615F7AF5B7292A2DDABE98D2E61940C3FB2B0545756507F080613E71'
+            'adb/AdbWinApi.dll' = '120BEF587119C6CB926B86B9BE90FDFBCE38937588EAE28CD91A94CE63C7B965'
+            'adb/AdbWinUsbApi.dll' = '6CA69A2CA0E31309C087D288F058977D421AD03500E4C3E1DBD981241A069C60'
+            'tools/aapt2.exe' = 'E0DFD4E7EC8B2009C2945722B33DEFC0714C7C77914273D70E37BB1295101BA8'
+          }
+          foreach ($item in $expected.GetEnumerator()) {
+            if ((Get-FileHash -LiteralPath $item.Key -Algorithm SHA256).Hash -ne $item.Value) { throw "Unexpected Android binary: $($item.Key)" }
+          }
+      - name: Build Windows installers (no public release)
+        run: npm run build:desktop
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: microwest-windows-x64-unsigned
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 14
