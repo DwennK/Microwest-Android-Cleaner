@@ -97,8 +97,13 @@ export function ApplicationsPage({
             color: "text-primary",
           },
         ].map(({ label, value, icon: Icon, color }) => (
-          <div className="card flex items-center gap-2 px-3 py-2" key={label}>
-            <Icon size={16} className={`shrink-0 ${color}`} />
+          <div
+            className="card metric-card flex items-center gap-2 px-3 py-1.5"
+            key={label}
+          >
+            <span className={`metric-icon ${color}`}>
+              <Icon size={15} />
+            </span>
             <span className="text-xs text-muted-foreground">{label}</span>
             <span className="ml-auto text-lg font-semibold tabular-nums leading-5">
               {value}
@@ -343,6 +348,7 @@ export function ApplicationsPage({
                 {visible.map((r) => (
                   <tr
                     key={r.app.package_name}
+                    data-action={r.risk.recommended_action}
                     data-selected={selected.includes(r.app.package_name)}
                     className={
                       selected.includes(r.app.package_name)
@@ -385,14 +391,29 @@ export function ApplicationsPage({
                       </button>
                     </td>
                     <td>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-base font-bold ${r.risk.score >= 60 ? "text-rose-700" : r.risk.score >= 30 ? "text-amber-700" : "text-emerald-700"}`}
-                        >
-                          {r.risk.score}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          /100
+                      <div className="score-cell">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-base font-bold ${r.risk.score >= 60 ? "text-rose-700" : r.risk.score >= 30 ? "text-amber-700" : "text-emerald-700"}`}
+                          >
+                            {r.risk.score}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            /100
+                          </span>
+                        </div>
+                        <span className="score-track" aria-hidden="true">
+                          <span
+                            style={{
+                              width: `${Math.max(0, Math.min(100, r.risk.score))}%`,
+                              background:
+                                r.risk.score >= 60
+                                  ? "var(--destructive)"
+                                  : r.risk.score >= 30
+                                    ? "#b17919"
+                                    : "var(--primary)",
+                            }}
+                          />
                         </span>
                       </div>
                     </td>

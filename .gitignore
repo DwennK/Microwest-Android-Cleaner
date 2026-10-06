@@ -15,6 +15,7 @@ src-tauri/gen/
 test-results/
 .playwright-cli/
 output/playwright/
+output/cleaner-icon/
 backup-import-*/
 *.backup-*
 build/

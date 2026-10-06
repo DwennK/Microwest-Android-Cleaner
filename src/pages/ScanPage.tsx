@@ -22,7 +22,7 @@ export function ScanPage({
 }: Props) {
   return (
     <div className="grid items-start gap-3 min-[1000px]:grid-cols-[1.5fr_1fr]">
-      <section className="card p-4">
+      <section className="card device-card p-4">
         <div className="mb-3 flex items-center gap-2">
           <ScanLine size={20} className="shrink-0 text-primary" />
           <h2 className="section-title">

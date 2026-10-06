@@ -50,17 +50,17 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="flex items-center gap-2.5 px-4 py-4">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-white text-xl font-black tracking-tighter text-[#0b2946]">
-            M<span className="text-teal-600">.</span>
-          </div>
+        <div className="brand-lockup">
+          <img
+            src="/brand/app-icon.png"
+            alt=""
+            className="brand-icon"
+            width="48"
+            height="48"
+          />
           <div>
-            <div className="text-lg font-bold tracking-tight text-white">
-              Microwest
-            </div>
-            <div className="mt-0.5 text-xs tracking-widest text-slate-400">
-              ANDROID CLEANER
-            </div>
+            <div className="brand-name">Android Cleaner</div>
+            <div className="brand-maker">par Microwest</div>
           </div>
         </div>
         <div className="eyebrow px-5 pb-2 text-slate-400">
@@ -84,14 +84,14 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="mt-auto px-4 py-3 text-xs text-slate-400">
+        <div className="sidebar-footer mt-auto px-4 py-3 text-xs text-slate-400">
           MICROWEST · VERSION {appVersion}
           <br />
           <span className="text-slate-400">Shopy Phone Sàrl</span>
         </div>
       </aside>
       <div className="min-w-0">
-        <header className="flex h-10 items-center justify-between border-b bg-white px-4">
+        <header className="workspace-header flex h-10 items-center justify-between border-b px-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Atelier</span>
             <ChevronRight size={13} />
@@ -158,7 +158,7 @@ export default function App() {
           {error && (
             <div
               role="alert"
-              className="mb-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+              className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800"
             >
               <Info size={18} className="mt-0.5 shrink-0" />
               <span className="flex-1 whitespace-pre-wrap break-words">
@@ -172,7 +172,7 @@ export default function App() {
           {notice && (
             <div
               role="status"
-              className="mb-3 flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900"
+              className="mb-3 flex items-start gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-[13px] text-teal-900"
             >
               <Check size={18} className="shrink-0" />
               <span className="flex-1 break-all">{notice}</span>

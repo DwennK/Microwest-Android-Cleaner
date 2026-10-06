@@ -55,7 +55,7 @@ export function ConnectionPage({
 }: Props) {
   return (
     <div className="grid items-start gap-3 min-[1000px]:grid-cols-[1.45fr_1fr]">
-      <section className="card overflow-hidden">
+      <section className="card device-card overflow-hidden">
         <div className="flex items-center justify-between border-b p-3">
           <h2 className="section-title">Téléphone connecté</h2>
           <Badge tone={connected ? "good" : "neutral"}>
@@ -65,7 +65,7 @@ export function ConnectionPage({
         <div className="p-3">
           <div className="mb-3 flex items-center gap-3">
             <div
-              className={`flex size-14 shrink-0 items-center justify-center rounded-2xl ${connected ? "bg-teal-50 text-primary" : "bg-slate-100 text-slate-400"}`}
+              className={`device-symbol ${connected ? "is-connected" : ""}`}
             >
               <Smartphone size={30} strokeWidth={1} />
             </div>
@@ -155,7 +155,7 @@ export function ConnectionPage({
             "Accepter la demande d’autorisation RSA sur le téléphone.",
           ].map((s, i) => (
             <div key={s} className="mb-3 flex gap-3 last:mb-0">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+              <span className="step-number flex size-6 shrink-0 items-center justify-center rounded-lg text-xs font-semibold">
                 {i + 1}
               </span>
               <p className="text-sm leading-5 text-muted-foreground">{s}</p>
