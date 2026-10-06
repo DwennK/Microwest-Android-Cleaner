@@ -11,11 +11,11 @@ pub fn escape(s: &str) -> String {
 pub fn priority(r: &Row) -> &'static str {
     if r.app.is_system_app || r.risk.recommended_action == "do_not_touch" {
         "Protégée"
-    } else if r.risk.score >= 80 {
+    } else if r.risk.recommended_action == "suggest_uninstall" && r.risk.score >= 80 {
         "Urgent"
-    } else if r.risk.score >= 60 {
+    } else if r.risk.recommended_action == "suggest_uninstall" {
         "À traiter"
-    } else if r.risk.score >= 30 || r.risk.recommended_action == "review" {
+    } else if r.risk.recommended_action == "review" {
         "À vérifier"
     } else {
         "OK"
@@ -32,11 +32,7 @@ pub fn plan(scan: &Scan, selected: &[String]) -> String {
     let high = scan
         .rows
         .iter()
-        .filter(|r| {
-            r.risk.score >= 60
-                && r.risk.recommended_action != "do_not_touch"
-                && !r.app.is_system_app
-        })
+        .filter(|r| r.risk.recommended_action == "suggest_uninstall" && !r.app.is_system_app)
         .count();
     let review = scan
         .rows
@@ -70,7 +66,7 @@ pub fn plan(scan: &Scan, selected: &[String]) -> String {
             continue;
         }
         if (!selected.is_empty() && selected.contains(&r.app.package_name))
-            || (selected.is_empty() && r.risk.score >= 60)
+            || (selected.is_empty() && r.risk.recommended_action == "suggest_uninstall")
         {
             s.push_str(&format!("- {} ({})\n  Score : {} — {}\n  Validation technicien : {}\n  Raisons : {}\n  Note : {}\n",r.app.display_name(),r.app.package_name,r.risk.score,r.risk.category,r.validation,r.risk.reasons.iter().take(4).cloned().collect::<Vec<_>>().join("; "),r.note));
             if !scan.cancelled
@@ -139,6 +135,15 @@ pub fn csv(scan: &Scan) -> Result<String> {
         "home",
         "default_home",
         "ai",
+        "local_score",
+        "ai_score",
+        "rules_version",
+        "apk_sha256",
+        "ad_libraries",
+        "warning_resources",
+        "apk_limitations",
+        "signature_verified",
+        "publisher",
     ])
     .map_err(|e| e.to_string())?;
     for r in &scan.rows {
@@ -175,6 +180,17 @@ pub fn csv(scan: &Scan) -> Result<String> {
             boolean_label(a.is_home_app).into(),
             boolean_label(a.is_default_home).into(),
             r.ai_text.clone(),
+            r.local_risk.score.to_string(),
+            r.ai.as_ref()
+                .map(|v| v.risk_score.to_string())
+                .unwrap_or_default(),
+            scan.rules_version.to_string(),
+            a.apk_analysis.sha256.clone(),
+            a.apk_analysis.ad_libraries.join("; "),
+            a.apk_analysis.warning_strings.join("; "),
+            a.apk_analysis.limitations.join("; "),
+            a.apk_analysis.signature_verified.to_string(),
+            a.apk_analysis.publisher.clone(),
         ];
         w.write_record(cells.iter().map(|s| csv_cell(s)))
             .map_err(|e| e.to_string())?;
@@ -238,6 +254,15 @@ fn html_application(row: &Row) -> String {
         s.push_str(&format!("<li>{}</li>", escape(reason)));
     }
     s.push_str("</ul>");
+    s.push_str(&format!(
+        "<p>Score local : {} · Score IA : {} · Décision finale : {}/100</p>",
+        row.local_risk.score,
+        row.ai
+            .as_ref()
+            .map(|v| v.risk_score.to_string())
+            .unwrap_or_else(|| "non analysée".into()),
+        row.risk.score
+    ));
     if !row.ai_text.is_empty() {
         s.push_str(&format!(
             "<h3>Avis IA</h3><p class=\"note\">{}</p>",
@@ -261,6 +286,41 @@ fn html_application(row: &Row) -> String {
             boolean_label(a.is_default_home).into(),
         ),
         ("Erreur de collecte", a.dumpsys_error.clone()),
+        (
+            "Bibliothèques publicitaires (présence statique)",
+            a.apk_analysis.ad_libraries.join(", "),
+        ),
+        (
+            "Ressources alarmistes (affichage non observé)",
+            a.apk_analysis.warning_strings.join("; "),
+        ),
+        ("Composants APK", a.apk_analysis.components.join(", ")),
+        ("APK SHA-256", a.apk_analysis.sha256.clone()),
+        (
+            "Signataires SHA-256",
+            a.apk_analysis.signer_sha256.join(", "),
+        ),
+        (
+            "Signature APK",
+            if a.apk_analysis.signature_verified {
+                "Vérifiée"
+            } else {
+                "Non vérifiée"
+            }
+            .into(),
+        ),
+        (
+            "Éditeur",
+            if a.apk_analysis.publisher.is_empty() {
+                "Identité non vérifiée".into()
+            } else {
+                a.apk_analysis.publisher.clone()
+            },
+        ),
+        (
+            "Limites de l’inspection APK",
+            a.apk_analysis.limitations.join("; "),
+        ),
     ] {
         if !value.trim().is_empty() {
             s.push_str(&html_field(label, &value));
@@ -276,6 +336,11 @@ pub fn html(scan: &Scan) -> String {
         escape(&scan.device.manufacturer), escape(&scan.device.model), escape(&scan.device.android_version),
         escape(&scan.device.serial), scan.rows.len()
     );
+    s.push_str(&format!(
+        "<p class=\"muted\">Version des règles : {}. {}</p>",
+        scan.rules_version,
+        escape(&scan.analysis_notice)
+    ));
     if scan.demo || scan.cancelled {
         s.push_str("<p class=\"notice warning\">DÉMONSTRATION / SCAN INCOMPLET — aucune désinstallation autorisée.</p>");
     }

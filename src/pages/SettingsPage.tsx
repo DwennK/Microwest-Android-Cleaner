@@ -43,20 +43,21 @@ export function SettingsPage({
   setPage,
 }: Props) {
   return (
-    <div className="grid gap-5 xl:grid-cols-[1.3fr_1fr]">
-      <section className="card p-5">
-        <div className="mb-5 flex items-center gap-3">
+    <div className="grid items-start gap-3 min-[1000px]:grid-cols-[1.3fr_1fr]">
+      <section className="card p-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <Sparkles size={21} className="text-primary" />
           <h2 className="section-title">Analyse IA optionnelle</h2>
           <Badge>Sur demande uniquement</Badge>
         </div>
-        <p className="mb-5 text-xs leading-6 text-muted-foreground">
+        <p className="mb-3 text-xs leading-5 text-muted-foreground">
           L’analyse ne s’exécute que sur demande. Elle transmet l’inventaire et
           les métadonnées au fournisseur choisi. Les clés restent côté moteur et
           ne sont jamais renvoyées à l’interface.
         </p>
         {settings ? (
           <form
+            className="settings-form"
             onSubmit={(e) => {
               e.preventDefault();
               void run("Enregistrement des paramètres", async () => {
@@ -75,7 +76,7 @@ export function SettingsPage({
             </label>
             <select
               id="provider"
-              className="mb-5 w-full"
+              className="mb-3 w-full"
               value={settings.ai_provider}
               onChange={(e) =>
                 setSettings({
@@ -92,7 +93,7 @@ export function SettingsPage({
             </label>
             <input
               id="model"
-              className="mb-5 w-full"
+              className="mb-3 w-full"
               required
               value={settings[`${settings.ai_provider}_model`]}
               onChange={(e) =>
@@ -107,7 +108,7 @@ export function SettingsPage({
             </label>
             <input
               id="url"
-              className="mb-5 w-full"
+              className="mb-3 w-full"
               placeholder="https://api.openai.com/v1"
               value={settings[`${settings.ai_provider}_base_url`]}
               onChange={(e) =>
@@ -134,8 +135,10 @@ export function SettingsPage({
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
-            <p className="mb-5 text-xs text-muted-foreground">
-              Compatibilité avec les réglages historiques .env du moteur.
+            <p className="mb-3 text-xs text-muted-foreground">
+              {settings.ai_provider === "minimax"
+                ? "Token/Coding Plan : utilisez la clé de votre abonnement. API à l’usage : utilisez une clé liée à un solde API disponible."
+                : "Compatibilité avec les réglages historiques .env du moteur."}
             </p>
             <Button type="submit" disabled={locked}>
               <Check />
@@ -148,9 +151,9 @@ export function SettingsPage({
           </p>
         )}
       </section>
-      <div className="space-y-5">
-        <section className="card p-5">
-          <h2 className="section-title mb-4">Environnement local</h2>
+      <div className="space-y-3">
+        <section className="card p-3">
+          <h2 className="section-title mb-2">Environnement local</h2>
           <dl className="detail-grid !grid-cols-[70px_1fr]">
             <dt>ADB</dt>
             <dd className="text-xs">{boot?.adb_path || "Introuvable"}</dd>
@@ -163,7 +166,7 @@ export function SettingsPage({
               {boot?.root || "Application desktop requise"}
             </dd>
           </dl>
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {["data", "logs"].map((folder) => (
               <Button
                 variant="outline"
@@ -196,9 +199,9 @@ export function SettingsPage({
             </Button>
           </div>
         </section>
-        <section className="card p-5">
+        <section className="card p-3">
           <h2 className="section-title mb-2">Reprendre les données Python</h2>
-          <p className="mb-4 text-xs leading-6 text-muted-foreground">
+          <p className="mb-2 text-xs leading-5 text-muted-foreground">
             Sélectionnez le dossier de l’ancienne application. La base et les
             réglages seront vérifiés ; vos données actuelles seront sauvegardées
             avant remplacement.
@@ -226,9 +229,9 @@ export function SettingsPage({
             Importer un dossier
           </Button>
         </section>
-        <section className="rounded-xl border border-dashed border-slate-300 p-5">
+        <section className="rounded-xl border border-dashed border-slate-300 p-3">
           <h2 className="section-title mb-2">Démonstration</h2>
-          <p className="mb-4 text-xs leading-6 text-muted-foreground">
+          <p className="mb-2 text-xs leading-5 text-muted-foreground">
             Trois applications fictives pour explorer le triage. Aucun téléphone
             n’est utilisé et aucune désinstallation n’est autorisée.
           </p>

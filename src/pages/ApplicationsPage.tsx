@@ -70,7 +70,7 @@ export function ApplicationsPage({
 }: Props) {
   return (
     <>
-      <div className="mb-5 grid grid-cols-2 gap-4 xl:grid-cols-4">
+      <div className="mb-3 grid grid-cols-4 gap-2">
         {[
           {
             label: "Applications analysées",
@@ -97,22 +97,17 @@ export function ApplicationsPage({
             color: "text-primary",
           },
         ].map(({ label, value, icon: Icon, color }) => (
-          <div
-            className="card flex items-start justify-between p-4"
-            key={label}
-          >
-            <div>
-              <div className="mb-2 text-xs text-muted-foreground">{label}</div>
-              <div className="text-2xl font-semibold tracking-tight">
-                {value}
-              </div>
-            </div>
-            <Icon size={19} className={color} />
+          <div className="card flex items-center gap-2 px-3 py-2" key={label}>
+            <Icon size={16} className={`shrink-0 ${color}`} />
+            <span className="text-xs text-muted-foreground">{label}</span>
+            <span className="ml-auto text-lg font-semibold tabular-nums leading-5">
+              {value}
+            </span>
           </div>
         ))}
       </div>
       {scan?.errors.length ? (
-        <details className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+        <details className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
           <summary className="cursor-pointer font-semibold">
             {scan.errors.length} avertissement(s) de collecte
           </summary>
@@ -124,40 +119,60 @@ export function ApplicationsPage({
         </details>
       ) : null}
       <section className="card overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h2 className="section-title">Inventaire des applications</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {scan
                 ? `${scan.device.model || "Téléphone"} · ${scan.scan_id ? `Scan #${scan.scan_id}` : "Non enregistré"}`
                 : "Aucun scan réalisé"}
             </p>
           </div>
-          <Button
-            variant="outline"
-            disabled={
-              locked ||
-              !scan ||
-              scan.demo ||
-              scan.cancelled ||
-              scan.device.state === "historical" ||
-              !rows.length
-            }
-            onClick={() => setAiConfirm(true)}
-          >
-            <Sparkles />
-            Analyse IA
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={locked || !liveScan(scan) || !connected}
+              title="Faites apparaître la publicité sur le téléphone, puis identifiez l’application au premier plan. Une superposition peut appartenir à une autre app."
+              onClick={() =>
+                void run("Observation du téléphone", async () => {
+                  const pkg = await invoke<string>("observe_foreground");
+                  if (rows.some((r) => r.app.package_name === pkg))
+                    setDetail(pkg);
+                  setNotice(
+                    `Premier plan : ${pkg}. Ce constat n’attribue pas une éventuelle superposition publicitaire. Vérifiez l’écran du téléphone et les indices avant de décider.`,
+                  );
+                })
+              }
+            >
+              Identifier l’app affichée
+            </Button>
+            <Button
+              variant="outline"
+              disabled={
+                locked ||
+                !scan ||
+                scan.demo ||
+                scan.cancelled ||
+                scan.device.state === "historical" ||
+                !rows.length
+              }
+              onClick={() => setAiConfirm(true)}
+            >
+              <Sparkles />
+              Analyse IA
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2 border-b p-3">
-          <div className="relative min-w-60 flex-1">
+        <div className="flex flex-wrap gap-1.5 border-b p-2">
+          <div className="relative min-w-44 flex-1">
             <Search
               size={16}
-              className="absolute left-3 top-2.5 text-muted-foreground"
+              className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
             <input
               aria-label="Rechercher une application"
-              className="w-full !pl-10"
+              className="w-full !pl-8"
               placeholder="Nom, package, installateur, note…"
               value={filters.search}
               onChange={(e) => changeFilter("search", e.target.value)}
@@ -236,7 +251,7 @@ export function ApplicationsPage({
             <option value="installer">Installateur</option>
           </select>
         </div>
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+        <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1">
           <Button
             variant="ghost"
             size="sm"
@@ -244,7 +259,11 @@ export function ApplicationsPage({
             onClick={() =>
               setSelected(
                 visible
-                  .filter((r) => r.risk.score >= 60 && removable(r))
+                  .filter(
+                    (r) =>
+                      r.risk.recommended_action === "suggest_uninstall" &&
+                      removable(r),
+                  )
                   .map((r) => r.app.package_name),
               )
             }
@@ -289,8 +308,7 @@ export function ApplicationsPage({
                 : "Votre inventaire apparaîtra ici"
             }
           >
-            Lancez un scan depuis un téléphone autorisé. Les résultats ne sont
-            jamais remplis avec des données fictives.
+            Lancez un scan depuis un téléphone autorisé.
           </Empty>
         ) : visible.length === 0 ? (
           <Empty title="Aucune application ne correspond">
@@ -302,7 +320,7 @@ export function ApplicationsPage({
             </Button>
           </Empty>
         ) : (
-          <div className="max-h-[570px] overflow-auto">
+          <div className="max-h-[calc(100dvh-320px)] overflow-auto">
             <table>
               <thead className="sticky top-0 z-10">
                 <tr>
@@ -310,7 +328,9 @@ export function ApplicationsPage({
                     <span className="sr-only">Sélection</span>
                   </th>
                   <th>Application</th>
-                  <th>Score</th>
+                  <th title="Priorité d’examen fondée sur les indices locaux ; ce score n’est pas une probabilité d’infection.">
+                    Score
+                  </th>
                   <th>Provenance</th>
                   <th>Action proposée</th>
                   <th>Validation</th>
@@ -342,24 +362,24 @@ export function ApplicationsPage({
                     </td>
                     <td>
                       <button
-                        className="flex items-center gap-3 text-left"
+                        className="flex items-center gap-2 text-left"
                         onClick={() => setDetail(r.app.package_name)}
                       >
                         <AppIcon row={r} />
-                        <div>
-                          <div className="max-w-72 truncate font-semibold">
-                            {r.app.app_label || r.app.package_name}
-                          </div>
-                          <div className="mt-0.5 max-w-72 truncate font-mono text-xs text-muted-foreground">
-                            {r.app.package_name}
-                          </div>
-                          <div className="mt-0.5 flex gap-1">
+                        <div className="leading-4">
+                          <div className="flex items-center gap-1.5">
+                            <span className="max-w-72 truncate font-semibold">
+                              {r.app.app_label || r.app.package_name}
+                            </span>
                             {r.app.has_launcher_entry === false && (
                               <Badge tone="warn">Sans launcher</Badge>
                             )}
                             {r.app.is_default_home && (
                               <Badge tone="warn">Accueil actif</Badge>
                             )}
+                          </div>
+                          <div className="max-w-72 truncate font-mono text-xs text-muted-foreground">
+                            {r.app.package_name}
                           </div>
                         </div>
                       </button>
@@ -411,6 +431,24 @@ export function ApplicationsPage({
                         {actionLabels[r.risk.recommended_action] ||
                           r.risk.recommended_action}
                       </Badge>
+                      <div
+                        className="mt-0.5 max-w-44 truncate text-xs text-muted-foreground"
+                        title={r.risk.reasons.join("\n")}
+                      >
+                        {r.risk.category === "conflicting_evidence"
+                          ? "Désaccord local / IA"
+                          : r.risk.category === "unwanted_utility"
+                            ? "Profil indésirable"
+                            : r.risk.category === "combined_signals"
+                              ? "Indices concordants"
+                              : r.risk.category === "ai_unwanted_suspect"
+                                ? "Avis IA étayé"
+                                : r.risk.category === "ai_keep"
+                                  ? "Suspicion corrigée par IA"
+                                  : r.risk.recommended_action === "keep"
+                                    ? "Aucun indice notable"
+                                    : "Examen des indices"}
+                      </div>
                     </td>
                     <td className="text-xs text-muted-foreground">
                       {validationLabels[r.validation]}
@@ -431,12 +469,10 @@ export function ApplicationsPage({
             </table>
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <ShieldCheck size={16} />
-            <span>
-              Aucune suppression automatique. Confirmation humaine obligatoire.
-            </span>
+            <span>Confirmation requise avant suppression.</span>
           </div>
           <Button
             variant="destructive"
@@ -468,7 +504,7 @@ export function ApplicationsPage({
         </div>
       </section>
       {scan?.uninstalled.length ? (
-        <section className="card mt-5 p-5">
+        <section className="card mt-3 p-3">
           <h2 className="section-title mb-3">Résultats des désinstallations</h2>
           {scan.uninstalled.map((u, i) => (
             <div key={i} className="mb-2 flex gap-3 text-sm">

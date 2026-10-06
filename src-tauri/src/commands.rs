@@ -252,6 +252,7 @@ pub async fn analyze_ai(app: tauri::AppHandle, state: State<'_, Engine>) -> Resu
     if scan.demo || scan.cancelled || scan.device.state == "historical" || scan.rows.is_empty() {
         return Err("Un scan réel complet est requis".into());
     }
+    reevaluate(&mut scan, &state.db()?)?;
     let results = ai::analyze(&state.root, &scan.rows, &cancel, |n, total| {
         progress(&app, "ai", n, total, "Analyse IA des métadonnées…")
     })
@@ -260,11 +261,20 @@ pub async fn analyze_ai(app: tauri::AppHandle, state: State<'_, Engine>) -> Resu
         return Err("Analyse IA annulée".into());
     }
     let mut db = state.db()?;
+    let mut applied = 0;
+    let mut changed = 0;
     for row in &mut scan.rows {
         if let Some(result) = results.get(&row.app.package_name) {
-            ai::apply(row, result.clone(), &db.reputation(&row.app.package_name)?);
+            let previous = (row.risk.score, row.risk.recommended_action.clone());
+            if ai::apply(row, result.clone(), &db.reputation(&row.app.package_name)?) {
+                applied += 1;
+            }
+            if previous != (row.risk.score, row.risk.recommended_action.clone()) {
+                changed += 1;
+            }
         }
     }
+    scan.analysis_notice = format!("IA : {} avis reçus, {applied} intégrés, {changed} décisions ou scores modifiés. Les autres avis sont non étayés ou concernent une décision protégée.", results.len());
     scan.rows.sort_by_key(|r| std::cmp::Reverse(r.risk.score));
     db.persist_analysis(&scan)?;
     if let Some(id) = scan.scan_id {
@@ -356,6 +366,7 @@ fn reevaluate(scan: &mut Scan, db: &Database) -> Result<()> {
         }
     }
     scan.rows.sort_by_key(|r| std::cmp::Reverse(r.risk.score));
+    scan.rules_version = crate::evidence::RULES_VERSION;
     Ok(())
 }
 #[tauri::command]
@@ -522,8 +533,41 @@ pub async fn history(state: State<'_, Engine>) -> Result<Vec<Value>> {
 #[tauri::command]
 pub async fn load_history(state: State<'_, Engine>, id: i64) -> Result<Scan> {
     let (_permit, _) = state.begin()?;
-    let scan = state.db()?.load(id)?;
+    let mut db = state.db()?;
+    let mut scan = db.load(id)?;
+    if scan.rules_version != crate::evidence::RULES_VERSION {
+        reevaluate(&mut scan, &db)?;
+        scan.analysis_notice = "Analyse recalculée avec les règles actuelles. Les anciens verdicts sont archivés. Les anciennes métadonnées ne remplacent pas un nouveau scan APK ; les avis IA sans références doivent être relancés sur un scan réel.".into();
+        db.persist_analysis(&scan)?;
+        scan.comparison = Some(db.comparison(id)?);
+    }
     state.store(scan)
+}
+
+#[tauri::command]
+pub async fn observe_foreground(state: State<'_, Engine>) -> Result<String> {
+    let (_permit, cancel) = state.begin()?;
+    let scan = state.current()?;
+    if scan.demo || scan.cancelled || scan.device.state != "device" {
+        return Err("Connectez le téléphone et lancez un scan réel.".into());
+    }
+    let adb = state.adb(cancel)?;
+    adb.require_connected(&scan.device.serial).await?;
+    let raw = adb
+        .shell(
+            &scan.device.serial,
+            &["dumpsys", "activity", "activities"],
+            10,
+        )
+        .await?;
+    foreground_package(&raw).ok_or_else(|| "Application au premier plan non identifiable sur cet Android. Aucune attribution n’a été faite.".into())
+}
+
+fn foreground_package(raw: &str) -> Option<String> {
+    let re = regex::Regex::new(r"\b([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)/[A-Za-z0-9_.$]+").unwrap();
+    raw.lines()
+        .filter(|l| l.contains("mResumedActivity") || l.contains("topResumedActivity"))
+        .find_map(|l| re.captures(l).map(|c| c[1].to_string()))
 }
 #[tauri::command]
 pub async fn export_scan(

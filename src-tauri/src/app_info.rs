@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppInfo {
+    pub apk_analysis: crate::evidence::ApkAnalysis,
     pub package_name: String,
     pub app_label: String,
     pub app_label_source: String,
@@ -38,6 +39,7 @@ pub struct AppInfo {
 impl Default for AppInfo {
     fn default() -> Self {
         Self {
+            apk_analysis: Default::default(),
             package_name: String::new(),
             app_label: "".into(),
             app_label_source: "package".into(),

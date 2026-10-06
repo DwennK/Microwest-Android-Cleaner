@@ -352,6 +352,15 @@ pub async fn apk(
     if a.target_sdk.is_empty() {
         a.target_sdk = meta.target;
     }
+    let root = cache.parent().and_then(Path::parent).unwrap_or(cache);
+    a.apk_analysis = crate::evidence::enrich(&local, tool, root, &adb.cancel).await;
+    if paths.len() > 1 {
+        a.apk_analysis.partial = true;
+        a.apk_analysis
+            .limitations
+            .push("APK fractionné : analyse du module de base seulement.".into());
+    }
+    crate::evidence::resolve_publisher(root, a);
     if let Some(icon) = best_icon(&meta.icons) {
         let file = std::fs::File::open(&local).map_err(|e| e.to_string())?;
         if let Ok(mut archive) = zip::ZipArchive::new(file) {

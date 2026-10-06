@@ -49,7 +49,8 @@ export function useAppController() {
   const visible = filteredRows(rows, filters);
   const detailRow = rows.find((r) => r.app.package_name === detail);
   const high = rows.filter(
-    (r) => r.risk.score >= 60 && !protectedRow(r),
+    (r) =>
+      r.risk.recommended_action === "suggest_uninstall" && !protectedRow(r),
   ).length;
   const review = rows.filter(
     (r) => r.risk.recommended_action === "review",

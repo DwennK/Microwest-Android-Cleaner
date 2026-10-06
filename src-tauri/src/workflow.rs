@@ -19,6 +19,7 @@ pub async fn scan_device(
     let (homes, home) = adb.home(&serial).await;
     let services = adb.services(&serial).await;
     let mut scan = Scan {
+        rules_version: crate::evidence::RULES_VERSION,
         device,
         total: packages.len(),
         ..Default::default()
@@ -53,9 +54,16 @@ pub async fn scan_device(
                 scanner::appops(adb, &serial, &mut a).await;
                 if let Some(tool) = &tool {
                     if let Err(e) = scanner::apk(adb, tool, cache, &serial, &mut a).await {
+                        a.apk_analysis
+                            .limitations
+                            .push("APK non inspecté : récupération ou lecture impossible.".into());
                         scan.errors
                             .push(format!("{package} : métadonnées APK indisponibles : {e}"));
                     }
+                } else {
+                    a.apk_analysis
+                        .limitations
+                        .push("APK non inspecté : aapt2 indisponible.".into());
                 }
                 scanner::audits(&mut a);
             }

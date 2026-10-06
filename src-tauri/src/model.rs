@@ -40,8 +40,12 @@ impl Default for Reputation {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AiResult {
+    pub evidence_ids: Vec<String>,
+    pub counter_evidence_ids: Vec<String>,
+    pub missing_information: Vec<String>,
     pub risk_score: i32,
     pub category: String,
     pub recommended_action: String,
@@ -96,6 +100,8 @@ pub struct UninstallResult {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scan {
+    pub rules_version: u32,
+    pub analysis_notice: String,
     pub device: Device,
     pub rows: Vec<Row>,
     pub errors: Vec<String>,

@@ -21,13 +21,15 @@ export function Empty({
   icon?: typeof ScanLine;
 }) {
   return (
-    <div className="flex min-h-64 flex-col items-center justify-center px-8 py-12 text-center">
-      <div className="mb-5 rounded-2xl bg-muted p-4 text-muted-foreground">
-        <Icon size={28} strokeWidth={1.5} />
+    <div className="flex items-center gap-3 px-4 py-5">
+      <div className="shrink-0 rounded-lg bg-muted p-2 text-muted-foreground">
+        <Icon size={20} strokeWidth={1.5} />
       </div>
-      <h3 className="mb-2 font-semibold">{title}</h3>
-      <div className="max-w-lg text-sm leading-6 text-muted-foreground">
-        {children}
+      <div>
+        <h3 className="font-semibold">{title}</h3>
+        <div className="mt-1 text-xs leading-5 text-muted-foreground">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -48,9 +50,13 @@ export function AppIcon({ row }: { row: Row }) {
     };
   }, [row.app.package_name, row.app.icon_path]);
   return src ? (
-    <img src={src} alt="" className="size-9 rounded-xl object-contain" />
+    <img
+      src={src}
+      alt=""
+      className="size-7 shrink-0 rounded-lg object-contain"
+    />
   ) : (
-    <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg font-semibold text-slate-500">
+    <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-sm font-semibold text-slate-500">
       {(row.app.app_label || row.app.package_name).slice(0, 1).toUpperCase()}
     </div>
   );

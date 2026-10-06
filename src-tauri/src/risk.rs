@@ -20,20 +20,6 @@ fn words(key: &str) -> Vec<&'static str> {
 pub fn safe_installer(s: &str) -> bool {
     CONSTANTS["SAFE_INSTALLERS"].get(s).is_some()
 }
-fn starts(s: &str, key: &str) -> bool {
-    words(key).iter().any(|p| s.starts_with(p))
-}
-fn known_system(s: &str) -> bool {
-    s == "android" || starts(s, "KNOWN_SYSTEM_SAFE_PREFIXES")
-}
-pub fn trusted(a: &AppInfo) -> bool {
-    a.is_system_app && known_system(&a.package_name)
-        || words("TRUSTED_OFFICIAL_PACKAGES").contains(&a.package_name.as_str())
-            && safe_installer(&a.installer)
-}
-fn impersonates(a: &AppInfo) -> bool {
-    !a.is_system_app && !trusted(a) && starts(&a.package_name, "OFFICIAL_IMPERSONATION_PREFIXES")
-}
 fn text(a: &AppInfo) -> String {
     format!("{} {}", a.display_name(), a.package_name).to_lowercase()
 }
@@ -42,13 +28,6 @@ pub fn active(a: &AppInfo, cap: &str) -> bool {
 }
 fn any_active(a: &AppInfo, caps: &[&str]) -> bool {
     caps.iter().any(|c| active(a, c))
-}
-fn requested(a: &AppInfo) -> &[String] {
-    if a.requested_permissions.is_empty() {
-        &a.sensitive_permissions
-    } else {
-        &a.requested_permissions
-    }
 }
 fn boundary(text: &str, word: &str) -> bool {
     text.match_indices(word).any(|(i, _)| {
@@ -59,62 +38,6 @@ fn boundary(text: &str, word: &str) -> bool {
 }
 fn contains(text: &str, key: &str) -> bool {
     words(key).iter().any(|w| boundary(text, w))
-}
-fn scam(text: &str) -> bool {
-    words("SCAM_BAIT_WORDS").iter().any(|w| {
-        if w.len() <= 3 {
-            boundary(text, w)
-        } else {
-            text.contains(w)
-        }
-    })
-}
-fn dangerous(p: &str) -> bool {
-    words("HIGH_RISK_PERMISSION_MARKERS")
-        .iter()
-        .any(|m| p.contains(m))
-}
-fn cleaner_profile(a: &AppInfo) -> bool {
-    contains(&text(a), "CLEANER_BAIT_WORDS")
-        && any_active(a, &["overlay", "accessibility", "notification_listener"])
-}
-fn strong(a: &AppInfo) -> bool {
-    any_active(
-        a,
-        &[
-            "accessibility",
-            "device_admin",
-            "notification_listener",
-            "install_unknown_apps",
-        ],
-    ) || a.has_launcher_entry == Some(false) && any_active(a, &["overlay", "notifications"])
-        || cleaner_profile(a)
-}
-fn distribution(a: &AppInfo) -> bool {
-    let t = text(a);
-    !safe_installer(&a.installer)
-        || a.has_launcher_entry == Some(false)
-        || a.can_install_unknown_apps
-        || scam(&t)
-        || cleaner_profile(a)
-        || impersonates(a)
-        || contains(&t, "SUSPICIOUS_WORDS")
-            && (a.has_overlay || a.has_notification_listener || a.requests_post_notifications)
-}
-fn random_package(p: &str) -> bool {
-    if !p.contains('.') {
-        return true;
-    }
-    let tail = p.rsplit('.').next().unwrap_or("");
-    [
-        "app", "service", "update", "system", "android", "tools", "manager",
-    ]
-    .contains(&tail)
-        || Regex::new(r"^[a-z]{1,3}\d{2,}[a-z0-9]*$")
-            .unwrap()
-            .is_match(tail)
-        || Regex::new(r"^[a-z0-9]{12,}$").unwrap().is_match(tail)
-            && !Regex::new(r"[aeiou]{2}").unwrap().is_match(tail)
 }
 pub fn generic_label(s: &str) -> bool {
     [
@@ -204,7 +127,7 @@ pub fn profile(a: &AppInfo) -> Profile {
             .iter()
             .any(|s| l.contains(*s));
     if reported || hash {
-        p.add("reported_name",70,"Nom correspondant aux applications indésirables signalées par l'atelier ; vérifier l'identité avant suppression (homonymes possibles).");
+        p.add("reported_name",40,"Nom correspondant aux applications indésirables signalées par l'atelier ; vérifier l'identité avant suppression (homonymes possibles).");
     }
     let pdf = has(&["pdf", "pdfreader", "allpdfreader", "pdfviewer"]);
     let qr = has(&[
@@ -221,17 +144,21 @@ pub fn profile(a: &AppInfo) -> Profile {
         });
     let utility = pdf || qr || clone;
     if utility {
-        p.add("utility",35,"Utilitaire PDF/QR ou doublon galerie/contacts tiers : vérifier son utilité et son identité.");
+        p.add(
+            "utility",
+            0,
+            "Rôle PDF/QR/galerie/contacts : cette fonction seule ne constitue pas un risque.",
+        );
         if has(&[
             "all", "super", "ultra", "max", "ultimate", "boost", "cleaner",
         ]) {
-            p.add("promoted_utility",65,"Utilitaire au nom racoleur (« all/super/ultra/max ») : indésirable probable selon le tri atelier.");
+            p.add("promoted_utility",35,"Nom promotionnel d’un utilitaire : vérifier son identité, sans conclure à une application malveillante.");
         }
         if qr && a.target_sdk.parse::<u32>().is_ok_and(|v| v > 0 && v <= 28) {
-            p.add("old_qr",65,"Ancien lecteur QR tiers ciblant Android 9 ou antérieur : suppression proposée si devenu inutile.");
+            p.add("old_qr",15,"Ancien lecteur QR : compatibilité vieillissante, pas une preuve de comportement indésirable.");
         }
         if a.has_launcher_entry == Some(false)
-            || any_active(
+            && any_active(
                 a,
                 &[
                     "overlay",
@@ -241,7 +168,7 @@ pub fn profile(a: &AppInfo) -> Profile {
                 ],
             )
         {
-            p.add("intrusive_utility",80,"Utilitaire peu visible ou doté d'accès intrusifs actifs : profil prioritaire de publicité indésirable.");
+            p.add("intrusive_utility",80,"Utilitaire peu visible et doté d'accès intrusifs actifs : profil prioritaire de publicité indésirable.");
         }
     }
     if a.is_home_app == Some(true) {
@@ -266,264 +193,162 @@ pub fn profile(a: &AppInfo) -> Profile {
             "Promesse de gains/récompenses : examiner le risque de publicité et d'arnaque.",
         );
         if has(&["miner", "mining", "gold", "lucky", "win", "spin"]) {
-            p.add("reward_bait",70,"Jeu/minage combiné à une promesse de gains : application indésirable probable selon le tri atelier.");
+            p.add("reward_bait",40,"Jeu/minage combiné à une promesse de gains : application à vérifier avec le client.");
         }
     }
     p
 }
+// The score is a triage priority, not a probability of infection. Store identity,
+// permission declarations and missing metadata are not evidence of abuse.
 pub fn evaluate(a: &AppInfo, rep: &Reputation) -> Risk {
-    let mut score: i32 = 0;
-    let mut reasons = Vec::new();
-    let official = trusted(a);
-    let t = text(a);
-    macro_rules! add {
-        ($n:expr,$s:expr) => {{
-            score += $n;
-            reasons.push(($s).to_string());
-        }};
-    }
-    if a.is_system_app && known_system(&a.package_name) {
+    if a.is_system_app {
         return Risk {
             score: 0,
             category: "do_not_touch_system".into(),
             recommended_action: "do_not_touch".into(),
-            reasons: vec![
-                "Application système officielle Samsung/Google/Microsoft : ne pas supprimer."
-                    .into(),
-            ],
+            reasons: vec!["Composant système : protégé contre la suppression.".into()],
+        };
+    }
+    if rep.whitelisted {
+        return Risk {
+            score: 0,
+            category: "safe".into(),
+            recommended_action: "keep".into(),
+            reasons: vec!["Application conservée selon la liste blanche locale.".into()],
         };
     }
     if rep.blacklisted {
-        add!(
-            50.max(rep.blacklist_severity),
-            format!("Présent dans la blacklist locale. {}", rep.reason).trim()
-        );
+        return Risk {
+            score: rep.blacklist_severity.clamp(60, 100),
+            category: "local_blacklist".into(),
+            recommended_action: "suggest_uninstall".into(),
+            reasons: vec![format!("Présente dans la blacklist locale. {}", rep.reason)],
+        };
     }
-    if rep.whitelisted {
-        add!(-80, "Présent dans la whitelist locale.");
-    }
-    let req = requested(a);
-    let suspicious = contains(&t, "SUSPICIOUS_WORDS");
-    let cleaner = contains(&t, "CLEANER_BAIT_WORDS");
+
+    let mut score: i32 = 0;
+    let mut reasons = Vec::new();
     let unknown = !safe_installer(&a.installer);
     let hidden = a.has_launcher_entry == Some(false);
-    if active(a, "accessibility") {
-        add!(35, "Service d'accessibilité actif.");
-    } else if a.has_accessibility {
-        add!(
-            10,
-            "Service d'accessibilité déclaré mais non confirmé actif."
-        );
+    let p = profile(a);
+    let mut privileged = 0;
+    let deceptive_utility = crate::evidence::deceptive_utility(a);
+    if deceptive_utility {
+        score = 65;
+        reasons.push("Utilitaire combinant une bibliothèque publicitaire et des ressources alarmistes : faux utilitaire publicitaire possible. L’affichage effectif reste à vérifier.".into());
     }
-    if active(a, "overlay") && !official {
-        add!(30, "Permission overlay SYSTEM_ALERT_WINDOW active.");
-    } else if (a.has_overlay || req.iter().any(|p| p.contains("SYSTEM_ALERT_WINDOW"))) && !official
-    {
-        add!(
-            8,
-            "Permission overlay SYSTEM_ALERT_WINDOW demandée mais non confirmée active."
-        );
-    }
-    let dg = a.granted_permissions.iter().any(|p| dangerous(p));
-    let dr = req.iter().any(|p| dangerous(p));
-    if dg && !official {
-        add!(25, "Permissions sensibles SMS/appels/contacts accordées.");
-    } else if dr && !official {
-        add!(
-            8,
-            "Permissions sensibles SMS/appels/contacts demandées mais non confirmées accordées."
-        );
-    }
-    if a.granted_permissions.len() >= 5 && !official {
-        add!(20, "Nombre élevé de permissions sensibles accordées.");
-    } else if req.len() >= 5 && !official {
-        add!(5, "Nombre élevé de permissions sensibles demandées.");
-    }
-    if a.installer.is_empty() {
-        add!(20, "Installateur inconnu ou vide.");
-    } else if safe_installer(&a.installer) {
-        add!(
-            -20,
-            format!(
-                "Installé via {}.",
-                CONSTANTS["SAFE_INSTALLERS"][&a.installer].as_str().unwrap()
-            )
-        );
-    }
-    if suspicious && !official {
-        add!(
+    for (cap, weight, reason) in [
+        (
+            "accessibility",
+            35,
+            "Service d'accessibilité activé : peut agir sur les autres applications.",
+        ),
+        (
+            "overlay",
             20,
-            "Nom ou package contenant un mot souvent associé à adware/scam."
-        );
-    }
-    if scam(&t) && !official {
-        add!(
+            "Superposition autorisée : peut afficher du contenu au-dessus des autres applications.",
+        ),
+        ("device_admin", 30, "Administrateur de l'appareil activé."),
+        (
+            "notification_listener",
+            25,
+            "Lecture des notifications des autres applications activée.",
+        ),
+        (
+            "install_unknown_apps",
             20,
-            "Nom évoquant gain, cadeau, crédit ou récompense : signal courant d'arnaque."
-        );
-    }
-    if !official
-        && words("GENERIC_SYSTEM_NAMES")
-            .iter()
-            .any(|n| a.display_name().trim().to_lowercase() == *n || t.contains(n))
-    {
-        add!(15, "Nom générique pouvant imiter une application système.");
-    }
-    if crate::scanner::installed_recently(&a.install_date) {
-        add!(15, "Application installée récemment.");
-    }
-    if active(a, "device_admin") {
-        add!(30, "Administrateur de l'appareil actif.");
-    } else if a.has_device_admin {
-        add!(
-            10,
-            "Fonction administrateur déclarée mais non confirmée active."
-        );
-    }
-    if active(a, "notification_listener") {
-        add!(35, "Accès aux notifications actif.");
-    } else if a.has_notification_listener {
-        add!(
-            10,
-            "Accès aux notifications déclaré mais non confirmé actif."
-        );
-    }
-    if a.requests_post_notifications && suspicious && !official {
-        if active(a, "notifications") {
-            add!(15, "Notifications actives avec nom suspect.");
-        } else {
-            add!(5, "Notifications demandées avec nom suspect.");
+            "Installation d'applications de sources inconnues autorisée.",
+        ),
+    ] {
+        if active(a, cap) {
+            privileged += 1;
+            score += weight;
+            reasons.push(reason.into());
         }
-    }
-    if a.notification_audit.len() >= 3 && !rep.whitelisted && !official {
-        add!(
-            if any_active(a, &["notifications", "notification_listener"]) {
-                20
-            } else {
-                5
-            },
-            format!(
-                "Profil notification/spam potentiel : {}.",
-                a.notification_audit
-                    .iter()
-                    .take(4)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        );
-    }
-    if active(a, "install_unknown_apps") && !official {
-        add!(25, "Installation d'apps inconnues autorisée.");
-    } else if a.can_install_unknown_apps && !official {
-        add!(
-            8,
-            "Installation d'apps inconnues demandée mais non confirmée autorisée."
-        );
     }
     if active(a, "usage_stats") {
-        add!(20, "Accès aux statistiques d'utilisation actif.");
-    } else if a.has_usage_stats {
-        add!(
-            5,
-            "Accès aux statistiques d'utilisation demandé mais non confirmé actif."
+        score += 10;
+        reasons.push("Accès aux statistiques d'utilisation activé.".into());
+    }
+    // Count data access once; ordinary notifications, vibration, boot and
+    // foreground services do not imply SMS access, surveillance or spam.
+    if a.granted_permissions.iter().any(|p| {
+        matches!(
+            p.as_str(),
+            "android.permission.READ_SMS"
+                | "android.permission.SEND_SMS"
+                | "android.permission.RECEIVE_SMS"
+                | "android.permission.READ_CALL_LOG"
+                | "android.permission.WRITE_CALL_LOG"
+                | "android.permission.READ_CONTACTS"
+                | "android.permission.WRITE_CONTACTS"
+        )
+    }) {
+        score += 10;
+        reasons.push("Accès SMS, journal d'appels ou contacts accordé : à rapprocher de la fonction de l'application, sans présumer un abus.".into());
+    }
+    if unknown {
+        score += 10;
+        reasons.push(
+            "Provenance non vérifiée ; ce seul constat ne justifie pas une suppression.".into(),
+        );
+    } else {
+        reasons.push(format!("Installée via {} ; cette provenance ne garantit pas l'absence de comportement indésirable.", CONSTANTS["SAFE_INSTALLERS"][&a.installer].as_str().unwrap()));
+    }
+    if hidden {
+        score += 20;
+        reasons.push(
+            "Aucune entrée dans le lanceur : vérifier si c'est un compagnon ou un service attendu."
+                .into(),
         );
     }
-    if a.has_vpn_service && unknown {
-        add!(
-            8,
-            "Service VPN/proxy déclaré hors installateur de confiance."
+    let hidden_access = hidden && (privileged > 0 || active(a, "notifications"));
+    if hidden_access {
+        score += 25;
+        reasons.push("Faible visibilité combinée à un accès spécial ou aux notifications autorisé : vérifier l'usage avec le client.".into());
+    }
+    let multiple_unknown_access = unknown && privileged >= 2;
+    if multiple_unknown_access {
+        score += 15;
+        reasons.push("Provenance non vérifiée combinée à plusieurs accès spéciaux activés.".into());
+    }
+    let corroborated = hidden_access || multiple_unknown_access || deceptive_utility;
+    if corroborated && contains(&text(a), "SUSPICIOUS_WORDS") {
+        score += 10;
+        reasons.push(
+            "Le rôle annoncé doit être vérifié au regard des accès et de la visibilité constatés."
+                .into(),
         );
     }
-    if a.runs_at_boot && suspicious && !official {
-        add!(15, "Se lance au démarrage et porte un nom suspect.");
+    if corroborated && crate::scanner::installed_recently(&a.install_date) {
+        score += 5;
+        reasons
+            .push("Installation récente : comparer sa date à l'apparition des symptômes.".into());
     }
-    if hidden && !a.is_system_app && !official {
-        add!(
-            20,
-            "Application utilisateur sans icône visible dans le launcher."
-        );
+    score = score.max(p.score_floor);
+    reasons.extend(p.reasons);
+    if privileged > 0 {
+        // Even one special access deserves review, but it is not proof of malware.
+        score = score.max(30);
     }
-    if !a.hidden_audit.is_empty() && hidden && (unknown || suspicious) && !official {
-        add!(
-            25,
-            "Profil peu visible combiné à installateur inconnu ou nom suspect."
-        );
+    if !corroborated && p.score_floor < 60 {
+        score = score.min(59);
     }
-    if hidden && !official {
-        if any_active(a, &["notification_listener", "notifications", "overlay"]) {
-            add!(
-                25,
-                "App peu visible avec accès notifications ou overlay actif."
-            );
-        } else if a.has_notification_listener || a.requests_post_notifications || a.has_overlay {
-            add!(
-                8,
-                "App peu visible avec accès notifications ou overlay demandé."
-            );
-        }
-    }
-    if (generic_label(&a.display_name()) || a.icon_path.is_empty() || a.app_label_source != "apk")
-        && (unknown || hidden)
-        && !official
-    {
-        add!(15, "Nom ou icône générique avec visibilité faible.");
-    }
-    if cleaner {
-        if any_active(a, &["overlay", "accessibility", "notification_listener"]) {
-            add!(
-                30,
-                "Combinaison cleaner/booster avec overlay, accessibilité ou notifications actifs."
-            );
-        } else if a.has_overlay || a.has_accessibility || a.has_notification_listener {
-            add!(
-                10,
-                "Combinaison cleaner/booster avec accès sensibles demandés."
-            );
-        }
-    }
-    if unknown && suspicious && dg {
-        add!(
-            25,
-            "Installateur non fiable + nom suspect + permissions sensibles accordées."
-        );
-    } else if unknown && suspicious && dr {
-        add!(
-            8,
-            "Installateur non fiable + nom suspect + permissions sensibles demandées."
-        );
-    }
-    if a.target_sdk.parse::<i32>().is_ok_and(|v| v <= 26) && !official {
-        add!(15, "Application ciblant une ancienne version Android.");
-    }
-    if random_package(&a.package_name) && !official {
-        add!(20, "Package très générique ou semblant aléatoire.");
-    }
-    if impersonates(a) {
-        add!(
-            35,
-            "Package utilisateur imitant un espace système Google/Samsung/Android."
-        );
-    }
-    if official && !rep.blacklisted {
-        add!(-80, "Namespace officiel installé via une source fiable.");
-    }
-    let p = profile(a);
-    if !a.is_system_app && !official && !rep.whitelisted {
-        score = score.max(p.score_floor);
-        reasons.extend(p.reasons);
-        if a.is_home_app == Some(true) && p.score_floor < 60 && !rep.blacklisted {
-            score = score.min(59);
-        }
-    }
-    if rep.blacklisted && !rep.whitelisted {
-        score = score.max(60);
+    if !a.dumpsys_error.is_empty() {
+        score = score.clamp(30, 59);
+        reasons.push("Collecte incomplète : vérifier les métadonnées avant toute décision.".into());
     }
     score = score.clamp(0, 100);
-    let (category, action) = classify(score, a, rep);
-    if reasons.is_empty() {
-        reasons.push("Aucun signal de risque notable détecté.".into());
-    }
+    let (category, action) = if score >= 60 && p.score_floor >= 60 {
+        ("unwanted_utility", "suggest_uninstall")
+    } else if score >= 60 && corroborated {
+        ("combined_signals", "suggest_uninstall")
+    } else if score >= 30 {
+        ("unknown_review_manually", "review")
+    } else {
+        reasons.push("Aucun faisceau d'indices local ne justifie un retrait. Les permissions seulement déclarées ne sont pas considérées comme actives.".into());
+        ("probably_safe", "keep")
+    };
     Risk {
         score,
         category: category.into(),
@@ -531,109 +356,185 @@ pub fn evaluate(a: &AppInfo, rep: &Reputation) -> Risk {
         reasons,
     }
 }
-fn classify(score: i32, a: &AppInfo, r: &Reputation) -> (&'static str, &'static str) {
-    if a.is_system_app {
-        return ("do_not_touch_system", "do_not_touch");
-    }
-    if r.whitelisted {
-        return ("safe", "keep");
-    }
-    if r.blacklisted {
-        return ("local_blacklist", "suggest_uninstall");
-    }
-    if trusted(a) {
-        return if a.has_accessibility
-            || a.has_device_admin
-            || a.has_notification_listener
-            || score >= 50
-        {
-            ("trusted_official_review", "review")
-        } else {
-            ("trusted_official", "keep")
-        };
-    }
-    if profile(a).score_floor >= 60 {
-        return ("unwanted_utility", "suggest_uninstall");
-    }
-    if a.is_home_app == Some(true)
-        || safe_installer(&a.installer)
-            && (a.has_accessibility
-                || a.has_device_admin
-                || a.has_notification_listener
-                || a.has_overlay
-                || requested(a).iter().filter(|p| dangerous(p)).count() >= 2)
-    {
-        return ("unknown_review_manually", "review");
-    }
-    if score < 15 {
-        return ("safe", "keep");
-    }
-    if score < 30 {
-        return ("probably_safe", "keep");
-    }
-    if score < 60 || safe_installer(&a.installer) && (!distribution(a) || !strong(a)) {
-        return ("unknown_review_manually", "review");
-    }
-    if any_active(a, &["accessibility", "device_admin"]) {
-        return ("spyware_suspect", "suggest_uninstall");
-    }
-    if active(a, "install_unknown_apps") || scam(&text(a)) {
-        return ("scam_suspect", "suggest_uninstall");
-    }
-    if a.has_launcher_entry == Some(false)
-        || !a.notification_audit.is_empty()
-        || [
-            "clean", "boost", "weather", "battery", "security", "vpn", "proxy",
-        ]
-        .iter()
-        .any(|w| text(a).contains(w))
-    {
-        return ("adware_suspect", "suggest_uninstall");
-    }
-    ("scam_suspect", "suggest_uninstall")
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn existing_python_tests_parity() {
-        let cases: Vec<Value> =
-            serde_json::from_str(include_str!("../reference/python-test-cases.json")).unwrap();
-        for (i, c) in cases.iter().enumerate() {
-            let mut a: AppInfo = serde_json::from_value(c["app"].clone()).unwrap();
-            if !a.install_date.is_empty() {
-                a.install_date = if c["recent_install"] == true {
-                    chrono::Utc::now().to_rfc3339()
-                } else {
-                    "2000-01-01".into()
-                };
-            }
-            let r = serde_json::from_value(c["reputation"].clone()).unwrap();
-            assert_eq!(
-                serde_json::to_value(evaluate(&a, &r)).unwrap(),
-                c["risk"],
-                "legacy test evaluation {i}"
-            );
+
+    fn ordinary() -> AppInfo {
+        AppInfo {
+            package_name: "org.example.dailycompanion".into(),
+            app_label: "Daily Companion".into(),
+            app_label_source: "apk".into(),
+            installer: "com.android.vending".into(),
+            has_launcher_entry: Some(true),
+            target_sdk: "36".into(),
+            ..Default::default()
         }
     }
+
     #[test]
-    fn python_parity_600_cases() {
-        let cases: Vec<Value> =
-            serde_json::from_str(include_str!("../reference/risk-cases.json")).unwrap();
-        for (i, c) in cases.iter().enumerate() {
-            let a = serde_json::from_value(c["app"].clone()).unwrap();
-            let r = serde_json::from_value(c["reputation"].clone()).unwrap();
-            assert_eq!(
-                serde_json::to_value(evaluate(&a, &r)).unwrap(),
-                c["risk"],
-                "risk case {i}"
+    fn ordinary_phone_apps_do_not_need_a_whitelist() {
+        let apps: Vec<AppInfo> =
+            serde_json::from_str(include_str!("../reference/ordinary-apps.json")).unwrap();
+        for mut app in apps {
+            let result = evaluate(&app, &Reputation::default());
+            println!(
+                "{}: {} -> {}",
+                app.package_name, result.score, result.recommended_action
             );
             assert_eq!(
-                serde_json::to_value(profile(&a)).unwrap(),
-                c["profile"],
-                "profile case {i}"
+                result.recommended_action, "keep",
+                "{}: {:?}",
+                app.package_name, result
             );
+            assert_eq!(result.score, 0, "{}", app.package_name);
+            // Identical metadata must work for an unknown publisher too.
+            app.package_name = "org.independent.dailycompanion".into();
+            app.app_label = "Daily Companion".into();
+            let renamed = evaluate(&app, &Reputation::default());
+            assert_eq!(renamed.score, result.score);
+            assert_eq!(renamed.recommended_action, result.recommended_action);
+        }
+    }
+
+    #[test]
+    fn declarations_and_missing_icons_do_not_prove_abuse() {
+        let mut a = ordinary();
+        a.has_accessibility = true;
+        a.has_overlay = true;
+        a.has_notification_listener = true;
+        a.has_device_admin = true;
+        a.can_install_unknown_apps = true;
+        a.requests_post_notifications = true;
+        a.runs_at_boot = true;
+        a.install_date = chrono::Utc::now().to_rfc3339();
+        a.granted_permissions = [
+            "FOREGROUND_SERVICE",
+            "POST_NOTIFICATIONS",
+            "VIBRATE",
+            "RECEIVE_BOOT_COMPLETED",
+            "FOREGROUND_SERVICE_DATA_SYNC",
+        ]
+        .map(|s| format!("android.permission.{s}"))
+        .to_vec();
+        a.requested_permissions = a.granted_permissions.clone();
+        a.notification_audit = vec![
+            "Notifications".into(),
+            "Vibration".into(),
+            "Démarrage".into(),
+        ];
+        a.active_capabilities = vec!["notifications".into()];
+        let result = evaluate(&a, &Reputation::default());
+        assert_eq!(result.score, 0);
+        assert_eq!(result.recommended_action, "keep");
+        a.app_label_source = "package".into();
+        a.installer.clear();
+        let result = evaluate(&a, &Reputation::default());
+        assert_eq!(result.recommended_action, "keep");
+    }
+
+    #[test]
+    fn contacts_and_special_access_are_not_malware_verdicts() {
+        let mut a = ordinary();
+        a.granted_permissions = vec![
+            "android.permission.READ_CONTACTS".into(),
+            "android.permission.READ_SMS".into(),
+        ];
+        assert_eq!(
+            evaluate(&a, &Reputation::default()).recommended_action,
+            "keep"
+        );
+        a.active_capabilities = vec![
+            "accessibility".into(),
+            "overlay".into(),
+            "notification_listener".into(),
+        ];
+        let risk = evaluate(&a, &Reputation::default());
+        assert_eq!(risk.recommended_action, "review");
+        assert!(risk.score < 60);
+    }
+
+    #[test]
+    fn hidden_intrusive_apps_remain_prioritized_even_from_a_store() {
+        for installer in ["com.android.vending", "unverified", ""] {
+            let mut a = ordinary();
+            a.installer = installer.into();
+            a.package_name = "com.google.android.apps.photos".into();
+            a.has_launcher_entry = Some(false);
+            a.active_capabilities = vec!["overlay".into(), "accessibility".into()];
+            let risk = evaluate(&a, &Reputation::default());
+            assert_eq!(risk.recommended_action, "suggest_uninstall");
+            assert!(risk.score >= 60);
+        }
+    }
+
+    #[test]
+    fn unknown_source_with_multiple_active_privileges_needs_attention() {
+        let mut a = ordinary();
+        a.installer.clear();
+        a.active_capabilities = vec!["accessibility".into(), "install_unknown_apps".into()];
+        assert_eq!(
+            evaluate(&a, &Reputation::default()).recommended_action,
+            "suggest_uninstall"
+        );
+        a.dumpsys_error = "Incomplete collection".into();
+        assert_eq!(
+            evaluate(&a, &Reputation::default()).recommended_action,
+            "review"
+        );
+    }
+
+    #[test]
+    fn utilities_are_judged_by_context_and_cleaner_policy_is_explicit() {
+        let mut a = ordinary();
+        for name in ["PDF Reader", "QR Reader", "Gallery", "Contacts"] {
+            a.app_label = name.into();
+            assert_eq!(
+                evaluate(&a, &Reputation::default()).recommended_action,
+                "keep",
+                "{name}"
+            );
+        }
+        a.app_label = "PDF Reader".into();
+        a.is_default_home = Some(true);
+        a.is_home_app = Some(true);
+        assert_eq!(
+            evaluate(&a, &Reputation::default()).recommended_action,
+            "suggest_uninstall"
+        );
+        a = ordinary();
+        a.app_label = "Phone Cleaner".into();
+        let risk = evaluate(&a, &Reputation::default());
+        assert_eq!(risk.recommended_action, "suggest_uninstall");
+        assert!(risk.reasons.iter().any(|r| r.contains("politique")));
+    }
+
+    #[test]
+    fn legacy_corpus_preserves_protections_not_obsolete_false_positive_scores() {
+        // Migration equality snapshots encoded the old false positives. Reuse their
+        // varied inputs to retain protection coverage under the corrected policy.
+        for source in [
+            include_str!("../reference/risk-cases.json"),
+            include_str!("../reference/python-test-cases.json"),
+        ] {
+            let cases: Vec<Value> = serde_json::from_str(source).unwrap();
+            for c in cases {
+                let a: AppInfo = serde_json::from_value(c["app"].clone()).unwrap();
+                let rep: Reputation = serde_json::from_value(c["reputation"].clone()).unwrap();
+                let risk = evaluate(&a, &rep);
+                assert!((0..=100).contains(&risk.score));
+                if a.is_system_app {
+                    assert_eq!(risk.recommended_action, "do_not_touch");
+                } else if rep.whitelisted {
+                    assert_eq!(risk.recommended_action, "keep");
+                } else if rep.blacklisted {
+                    assert_eq!(risk.recommended_action, "suggest_uninstall");
+                }
+                if risk.recommended_action == "suggest_uninstall" {
+                    assert!(risk.score >= 60);
+                }
+            }
         }
     }
 }

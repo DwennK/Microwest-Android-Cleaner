@@ -39,7 +39,7 @@ export function AppDetails({
           aria-describedby={undefined}
           className="fixed bottom-0 right-0 top-0 z-40 w-[min(640px,90vw)] overflow-y-auto bg-white shadow-2xl"
         >
-          <div className="sticky top-0 z-10 flex items-center gap-4 border-b bg-white p-6">
+          <div className="sticky top-0 z-10 flex items-center gap-4 border-b bg-white p-3">
             <AppIcon row={row} />
             <div className="min-w-0 flex-1">
               <Dialog.Title className="truncate text-xl font-semibold">
@@ -58,7 +58,7 @@ export function AppDetails({
               <X />
             </Button>
           </div>
-          <div className="space-y-7 p-6">
+          <div className="space-y-3 p-3">
             <div className="flex flex-wrap gap-2">
               <Badge
                 tone={
@@ -73,12 +73,13 @@ export function AppDetails({
               </Badge>
               <Badge>{actionLabels[row.risk.recommended_action]}</Badge>
               <Badge>Local : {row.local_risk.score}/100</Badge>
+              {row.ai && <Badge>IA : {row.ai.risk_score}/100</Badge>}
             </div>
             <section>
               <h3 className="mb-3 font-semibold">
                 Pourquoi cette proposition ?
               </h3>
-              <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
+              <ul className="space-y-2 text-sm leading-5 text-muted-foreground">
                 {row.risk.reasons.map((s, i) => (
                   <li key={i} className="flex gap-2">
                     <span className="text-primary">•</span>
@@ -166,10 +167,49 @@ export function AppDetails({
                 <h3 className="mb-2 text-sm font-semibold">
                   Avis IA · confiance {row.ai.confidence}
                 </h3>
-                <p className="text-sm leading-6">{row.ai_text}</p>
+                <p className="text-sm leading-5">{row.ai_text}</p>
               </section>
             )}
-            <section className="border-t pt-6">
+            <details className="rounded-lg border p-3">
+              <summary className="cursor-pointer font-semibold">
+                Indices APK et identité de l’éditeur
+              </summary>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {a.apk_analysis?.publisher ||
+                  "Identité de l’éditeur non vérifiée."}
+                {a.apk_analysis?.signature_verified
+                  ? " Signature APK vérifiée."
+                  : " Signature APK non vérifiée."}
+                {a.apk_analysis?.inspected
+                  ? a.apk_analysis.partial
+                    ? " Inspection statique partielle."
+                    : " Module de base inspecté."
+                  : " APK non inspecté."}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Les ressources et bibliothèques présentes ne prouvent pas
+                l’affichage d’une publicité.
+              </p>
+              {[
+                ["Bibliothèques publicitaires", a.apk_analysis?.ad_libraries],
+                ["Ressources alarmistes", a.apk_analysis?.warning_strings],
+                ["Composants déclarés", a.apk_analysis?.components],
+                ["Certificats SHA-256", a.apk_analysis?.signer_sha256],
+                ["Limites de collecte", a.apk_analysis?.limitations],
+              ].map(([label, values]) => (
+                <div key={String(label)} className="mt-2 text-xs">
+                  <strong>{String(label)} : </strong>
+                  {(values as string[] | undefined)?.join(" · ") ||
+                    "Aucun élément collecté"}
+                </div>
+              ))}
+              {a.apk_analysis?.sha256 && (
+                <p className="mt-2 break-all font-mono text-xs">
+                  APK SHA-256 : {a.apk_analysis.sha256}
+                </p>
+              )}
+            </details>
+            <section className="border-t pt-3">
               <h3 className="mb-3 font-semibold">Validation technicien</h3>
               <div className="flex flex-wrap gap-2">
                 {["keep", "review", "remove", "unreviewed"].map((status) => (

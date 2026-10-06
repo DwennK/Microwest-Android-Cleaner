@@ -54,26 +54,26 @@ export function ConnectionPage({
   setReport,
 }: Props) {
   return (
-    <div className="grid gap-5 xl:grid-cols-[1.45fr_1fr]">
+    <div className="grid items-start gap-3 min-[1000px]:grid-cols-[1.45fr_1fr]">
       <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b p-5">
+        <div className="flex items-center justify-between border-b p-3">
           <h2 className="section-title">Téléphone connecté</h2>
           <Badge tone={connected ? "good" : "neutral"}>
             {connected ? "Prêt à analyser" : "En attente"}
           </Badge>
         </div>
-        <div className="p-5">
-          <div className="mb-7 flex items-center gap-5">
+        <div className="p-3">
+          <div className="mb-3 flex items-center gap-3">
             <div
-              className={`flex h-32 w-24 shrink-0 items-center justify-center rounded-2xl ${connected ? "bg-teal-50 text-primary" : "bg-slate-100 text-slate-400"}`}
+              className={`flex size-14 shrink-0 items-center justify-center rounded-2xl ${connected ? "bg-teal-50 text-primary" : "bg-slate-100 text-slate-400"}`}
             >
-              <Smartphone size={64} strokeWidth={1} />
+              <Smartphone size={30} strokeWidth={1} />
             </div>
             <div>
-              <h3 className="mb-2 text-xl font-semibold">
+              <h3 className="mb-1 text-base font-semibold">
                 {device.model || "Aucun téléphone connecté"}
               </h3>
-              <p className="max-w-md text-sm leading-6 text-muted-foreground">
+              <p className="max-w-md text-sm leading-5 text-muted-foreground">
                 {device.message}
               </p>
               {connected && (
@@ -89,7 +89,7 @@ export function ConnectionPage({
           </label>
           <select
             id="device"
-            className="mb-5 w-full"
+            className="mb-3 w-full"
             disabled={locked}
             value={serial}
             onChange={(e) => {
@@ -108,7 +108,7 @@ export function ConnectionPage({
               <option value={serial}>{serial} · déconnecté</option>
             )}
           </select>
-          <label className="mb-5 flex items-center gap-2">
+          <label className="mb-3 flex items-center gap-2">
             <input
               type="checkbox"
               checked={autoRefresh}
@@ -117,7 +117,7 @@ export function ConnectionPage({
             />
             Actualiser la connexion toutes les 8 secondes
           </label>
-          <dl className="detail-grid border-t pt-5">
+          <dl className="detail-grid border-t pt-3">
             <dt>Numéro ADB</dt>
             <dd className="font-mono text-xs">{device.serial || "—"}</dd>
             <dt>Version Android</dt>
@@ -125,7 +125,7 @@ export function ConnectionPage({
             <dt>État</dt>
             <dd>{stateLabels[device.state] || device.state}</dd>
           </dl>
-          <div className="mt-7 flex flex-wrap gap-3">
+          <div className="mt-3 flex flex-wrap gap-3">
             <Button
               disabled={locked}
               onClick={() =>
@@ -146,25 +146,25 @@ export function ConnectionPage({
           </div>
         </div>
       </section>
-      <div className="space-y-5">
-        <section className="card p-5">
-          <h2 className="section-title mb-5">Préparer la connexion</h2>
+      <div className="space-y-3">
+        <section className="card p-3">
+          <h2 className="section-title mb-3">Préparer la connexion</h2>
           {[
             "Déverrouiller le téléphone et activer les options développeur.",
             "Activer « Débogage USB » et brancher un câble de données.",
             "Accepter la demande d’autorisation RSA sur le téléphone.",
           ].map((s, i) => (
-            <div key={s} className="mb-5 flex gap-3 last:mb-0">
+            <div key={s} className="mb-3 flex gap-3 last:mb-0">
               <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
                 {i + 1}
               </span>
-              <p className="text-sm leading-6 text-muted-foreground">{s}</p>
+              <p className="text-sm leading-5 text-muted-foreground">{s}</p>
             </div>
           ))}
         </section>
-        <section className="card p-5">
+        <section className="card p-3">
           <h2 className="section-title mb-2">Outils de connexion</h2>
-          <p className="mb-5 text-xs leading-5 text-muted-foreground">
+          <p className="mb-3 text-xs leading-5 text-muted-foreground">
             Utilisez la réparation si le téléphone reste hors ligne. Le
             diagnostic rassemble les chemins, versions et états ADB.
           </p>
@@ -197,7 +197,7 @@ export function ConnectionPage({
               Diagnostic
             </Button>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             {[
               ["start", "Démarrer ADB"],
               ["kill", "Arrêter ADB"],
@@ -231,8 +231,8 @@ export function ConnectionPage({
         </section>
       </div>
       {diagnostic && (
-        <section className="card p-5 xl:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
+        <section className="card p-3 min-[1000px]:col-span-2">
+          <div className="mb-2 flex items-center justify-between">
             <h2 className="section-title">Diagnostic ADB</h2>
             <div className="flex gap-2">
               <Button
@@ -265,7 +265,7 @@ export function ConnectionPage({
               </Button>
             </div>
           </div>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-xs leading-6">
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-xs leading-5">
             {diagnostic}
           </pre>
         </section>

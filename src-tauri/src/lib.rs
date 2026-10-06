@@ -4,6 +4,7 @@ mod app_info;
 pub mod commands;
 pub mod config;
 pub mod database;
+pub mod evidence;
 pub mod model;
 pub mod process;
 pub mod reports;
@@ -36,6 +37,7 @@ pub fn run() {
             commands::uninstall_selected,
             commands::history,
             commands::load_history,
+            commands::observe_foreground,
             commands::export_scan,
             commands::action_plan,
             commands::save_settings,

@@ -7,7 +7,20 @@ export interface Device {
   android_version: string;
   message: string;
 }
+export interface ApkAnalysis {
+  inspected: boolean;
+  partial: boolean;
+  sha256: string;
+  ad_libraries: string[];
+  warning_strings: string[];
+  components: string[];
+  signer_sha256: string[];
+  signature_verified: boolean;
+  publisher: string;
+  limitations: string[];
+}
 export interface AppInfo {
+  apk_analysis?: ApkAnalysis;
   package_name: string;
   app_label: string;
   app_label_source: string;
@@ -86,6 +99,8 @@ export interface Comparison {
   }[];
 }
 export interface Scan {
+  rules_version?: number;
+  analysis_notice?: string;
   device: Device;
   rows: Row[];
   errors: string[];

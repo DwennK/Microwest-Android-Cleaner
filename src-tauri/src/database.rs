@@ -103,7 +103,9 @@ impl Database {
             )
             .map_err(err)?;
         }
-        tx.execute_batch("PRAGMA user_version=4;").map_err(err)?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS analysis_revisions(id INTEGER PRIMARY KEY,scan_id INTEGER NOT NULL,payload TEXT NOT NULL,archived_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS reputation_overrides(package TEXT PRIMARY KEY);
+        PRAGMA user_version=4;").map_err(err)?;
         tx.commit().map_err(err)?;
         Ok(backup)
     }
@@ -127,7 +129,24 @@ impl Database {
             .optional()
             .map_err(err)?;
         Ok(Reputation {
-            whitelisted: white.is_some(),
+            whitelisted: white.as_ref().is_some_and(|reason| {
+                let seeded = CONSTANTS["DEFAULT_WHITELIST"]
+                    .as_array()
+                    .is_some_and(|items| {
+                        items.iter().any(|item| {
+                            item[0].as_str() == Some(p) && item[2].as_str() == Some(reason.as_str())
+                        })
+                    });
+                !seeded
+                    || self
+                        .con
+                        .query_row(
+                            "SELECT EXISTS(SELECT 1 FROM reputation_overrides WHERE package=?)",
+                            [p],
+                            |r| r.get::<_, bool>(0),
+                        )
+                        .unwrap_or(false)
+            }),
             blacklisted: black.is_some(),
             blacklist_severity: black.as_ref().map(|v| v.1).unwrap_or(50),
             reason: black.map(|v| v.0).or(white).unwrap_or_default(),
@@ -148,6 +167,12 @@ impl Database {
             }
             _ => return Err("Liste inconnue".into()),
         };
+        self.con
+            .execute(
+                "INSERT OR IGNORE INTO reputation_overrides(package) VALUES(?)",
+                [p],
+            )
+            .map_err(err)?;
         Ok(())
     }
     pub fn note(&self, p: &str) -> Result<String> {
@@ -176,7 +201,7 @@ impl Database {
             return Err("Un scan incomplet ou fictif ne peut pas être enregistré".into());
         }
         let tx = self.con.transaction().map_err(err)?;
-        tx.execute("INSERT INTO scan_history(date,device_model,android_version,scanned_count,suspicious_count,device_key) VALUES(?,?,?,?,?,?)",params![chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),scan.device.model,scan.device.android_version,scan.rows.len(),scan.rows.iter().filter(|r|r.risk.score>=60&&r.risk.recommended_action!="do_not_touch").count(),device_key(&scan.device.serial,&scan.device.model)]).map_err(err)?;
+        tx.execute("INSERT INTO scan_history(date,device_model,android_version,scanned_count,suspicious_count,device_key) VALUES(?,?,?,?,?,?)",params![chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),scan.device.model,scan.device.android_version,scan.rows.len(),scan.rows.iter().filter(|r|r.risk.recommended_action=="suggest_uninstall"&&!r.app.is_system_app).count(),device_key(&scan.device.serial,&scan.device.model)]).map_err(err)?;
         let id = tx.last_insert_rowid();
         for r in &scan.rows {
             tx.execute("INSERT INTO scan_apps(scan_id,package,app_label,score,category,action,validation_status) VALUES(?,?,?,?,?,?,?)",params![id,r.app.package_name,r.app.display_name(),r.risk.score,r.risk.category,r.risk.recommended_action,"unreviewed"]).map_err(err)?;
@@ -201,6 +226,27 @@ impl Database {
             return Ok(());
         };
         let tx = self.con.transaction().map_err(err)?;
+        let previous: Option<String> = tx
+            .query_row(
+                "SELECT payload FROM scan_payloads WHERE scan_id=?",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err)?;
+        if let Some(payload) = previous {
+            let old_version = serde_json::from_str::<serde_json::Value>(&payload)
+                .ok()
+                .and_then(|v| v["rules_version"].as_u64())
+                .unwrap_or(0);
+            if old_version != u64::from(scan.rules_version) {
+                tx.execute(
+                    "INSERT INTO analysis_revisions(scan_id,payload,archived_at) VALUES(?,?,?)",
+                    params![id, payload, chrono::Utc::now().to_rfc3339()],
+                )
+                .map_err(err)?;
+            }
+        }
         for r in &scan.rows {
             tx.execute(
                 "UPDATE scan_apps SET score=?,category=?,action=? WHERE scan_id=? AND package=?",
@@ -214,7 +260,7 @@ impl Database {
             )
             .map_err(err)?;
         }
-        tx.execute("UPDATE scan_history SET suspicious_count=(SELECT count(*) FROM scan_apps WHERE scan_id=? AND score>=60 AND action!='do_not_touch') WHERE id=?",params![id,id]).map_err(err)?;
+        tx.execute("UPDATE scan_history SET suspicious_count=(SELECT count(*) FROM scan_apps WHERE scan_id=? AND action='suggest_uninstall') WHERE id=?",params![id,id]).map_err(err)?;
         let mut saved = scan.clone();
         saved.device.serial.clear();
         tx.execute(
@@ -455,6 +501,14 @@ mod tests {
         let path = t.path().join("db.sqlite");
         Database::initialize(&path).unwrap();
         let mut db = Database::open(&path).unwrap();
+        assert!(!db.reputation("com.whatsapp").unwrap().whitelisted);
+        db.set_reputation(
+            "com.whatsapp",
+            "WhatsApp",
+            "whitelist",
+            "Application courante connue",
+        )
+        .unwrap();
         assert!(db.reputation("com.whatsapp").unwrap().whitelisted);
         let mut a = Scan {
             device: Device {
@@ -488,6 +542,48 @@ mod tests {
             .device
             .serial
             .is_empty());
+    }
+    #[test]
+    fn new_rules_archive_the_old_payload_and_preserve_validation() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("db.sqlite");
+        Database::initialize(&path).unwrap();
+        let mut db = Database::open(&path).unwrap();
+        let mut scan = Scan {
+            rows: vec![row("org.test.reader", 68)],
+            ..Default::default()
+        };
+        db.record(&mut scan).unwrap();
+        let id = scan.scan_id.unwrap();
+        db.set_validation(id, "org.test.reader", "keep").unwrap();
+        let mut updated = db.load(id).unwrap();
+        updated.rules_version = crate::evidence::RULES_VERSION;
+        updated.rows[0].risk.score = 10;
+        updated.rows[0].risk.recommended_action = "keep".into();
+        db.persist_analysis(&updated).unwrap();
+        let old: String = db
+            .con
+            .query_row(
+                "SELECT payload FROM analysis_revisions WHERE scan_id=?",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let old: Scan = serde_json::from_str(&old).unwrap();
+        assert_eq!(old.rows[0].risk.score, 68);
+        let loaded = db.load(id).unwrap();
+        assert_eq!(loaded.rows[0].risk.score, 10);
+        assert_eq!(loaded.rows[0].validation, "keep");
+        assert_eq!(loaded.rules_version, crate::evidence::RULES_VERSION);
+        assert_eq!(db.history().unwrap()[0]["suspicious_count"], 0);
+        db.persist_analysis(&loaded).unwrap();
+        assert_eq!(
+            db.con
+                .query_row("SELECT COUNT(*) FROM analysis_revisions", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
     }
     #[test]
     fn legacy_migration_backs_up_and_preserves_data() {

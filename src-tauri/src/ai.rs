@@ -1,4 +1,4 @@
-use crate::{config, model::*, risk};
+use crate::{config, model::*};
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -9,8 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 pub fn payload(row: &Row) -> Value {
     let a = &row.app;
-    let p = risk::profile(a);
-    json!({"app_name":a.display_name(),"app_name_source":a.app_label_source,"package_name":a.package_name,"installer":a.installer,"permissions_demandees":if a.requested_permissions.is_empty(){&a.sensitive_permissions}else{&a.requested_permissions},"permissions_accordees":a.granted_permissions,"capacites_actives":a.active_capabilities,"is_system_app":a.is_system_app,"has_launcher_entry":a.has_launcher_entry,"is_home_app":a.is_home_app,"is_default_home":a.is_default_home,"profil_atelier":{"familles":p.families,"raisons":p.reasons},"hidden_audit":a.hidden_audit,"notification_audit":a.notification_audit,"local_risk_score":row.local_risk.score,"local_reasons":row.local_risk.reasons,"version":a.version_name,"target_sdk":a.target_sdk,"install_date":a.install_date,"metadata_error":!a.dumpsys_error.is_empty()})
+    json!({"app_name":a.display_name(),"app_name_source":a.app_label_source,"package_name":a.package_name,"version":a.version_name,"target_sdk":a.target_sdk,"facts":crate::evidence::facts(a),"apk_limitations":a.apk_analysis.limitations})
 }
 pub fn parse(content: &str) -> Result<BTreeMap<String, AiResult>> {
     let mut s = content.trim().trim_matches('`').trim();
@@ -59,6 +58,9 @@ pub fn parse(content: &str) -> Result<BTreeMap<String, AiResult>> {
         results.insert(
             p.into(),
             AiResult {
+                evidence_ids: string_list(&item["evidence_ids"]),
+                counter_evidence_ids: string_list(&item["counter_evidence_ids"]),
+                missing_information: string_list(&item["missing_information"]),
                 risk_score: score,
                 category: item["category"]
                     .as_str()
@@ -78,47 +80,87 @@ pub fn parse(content: &str) -> Result<BTreeMap<String, AiResult>> {
     }
     Ok(results)
 }
-pub fn apply(row: &mut Row, result: AiResult, rep: &Reputation) {
-    row.ai_text = format!(
-        "{}/100 {} ({}) - {}",
-        result.risk_score, result.category, result.confidence, result.reason_fr
-    );
+fn string_list(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .take(32)
+                .map(|s| s.chars().take(250).collect())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Returns true only when a supported opinion was incorporated in the final decision.
+pub fn apply(row: &mut Row, result: AiResult, rep: &Reputation) -> bool {
     row.ai = Some(result.clone());
     row.risk = row.local_risk.clone();
+    let facts = crate::evidence::facts(&row.app);
+    let ids: Vec<_> = result
+        .evidence_ids
+        .iter()
+        .chain(&result.counter_evidence_ids)
+        .collect();
+    let grounded = !ids.is_empty() && ids.iter().all(|id| facts.contains_key(id.as_str()));
+    let confident = ["medium", "high"].contains(&result.confidence.as_str());
+    // The model's prose is retained in ai.reason_fr for auditing. User-facing
+    // justification is reconstructed from actual facts so invented permissions
+    // or publisher identities never appear as established evidence.
+    row.ai_text = if grounded {
+        format!(
+            "Avis IA : {} ({}/100, confiance {}). Faits cités : {}",
+            result.recommended_action,
+            result.risk_score,
+            result.confidence,
+            ids.iter()
+                .filter_map(|id| facts.get(id.as_str()))
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+    } else {
+        "Avis IA non appliqué : références absentes, anciennes ou non présentes dans les observations. Relancer l’analyse IA.".into()
+    };
     if row.app.is_system_app
         || row.local_risk.recommended_action == "do_not_touch"
         || rep.whitelisted
-        || ["keep", "removed"].contains(&row.validation.as_str())
-        || !["review", "suggest_uninstall"].contains(&result.recommended_action.as_str())
+        || rep.blacklisted
+        || row.validation != "unreviewed"
     {
-        return;
+        row.ai_text
+            .push_str(" Décision humaine, réputation explicite ou protection système conservée.");
+        return false;
     }
-    let suggest = result.recommended_action == "suggest_uninstall"
-        && ["medium", "high"].contains(&result.confidence.as_str())
-        && result.risk_score >= 60;
-    row.risk.score = row.local_risk.score.max(if suggest {
-        30.max(result.risk_score)
-    } else {
-        result.risk_score.clamp(30, 59)
-    });
-    row.risk.recommended_action =
-        if suggest || row.local_risk.recommended_action == "suggest_uninstall" {
-            "suggest_uninstall"
-        } else {
-            "review"
+    if !grounded || !confident {
+        if grounded {
+            row.ai_text
+                .push_str(" Confiance insuffisante : décision locale conservée.");
         }
-        .into();
-    row.risk.category = if suggest {
-        "ai_unwanted_suspect".into()
-    } else if row.local_risk.score >= 30 {
-        row.local_risk.category.clone()
-    } else {
-        "unknown_review_manually".into()
+        return false;
+    }
+    let strong_local = row.local_risk.recommended_action == "suggest_uninstall";
+    let incomplete = !row.app.dumpsys_error.is_empty();
+    let (action, score, category, explanation) = match result.recommended_action.as_str() {
+        "keep" if strong_local => ("review", row.local_risk.score.min(59), "conflicting_evidence", "Désaccord : l’IA conseille de conserver malgré des indices locaux forts. Vérification humaine requise."),
+        "keep" if incomplete => ("review", 30, "incomplete_evidence", "L’IA conseille de conserver mais la collecte Android est incomplète."),
+        "keep" if !result.counter_evidence_ids.is_empty() => ("keep", result.risk_score.clamp(0, 29), "ai_keep", "L’avis IA corrige la suspicion locale ; aucun indice local fort ne s’y oppose."),
+        "suggest_uninstall" if !incomplete && crate::evidence::supports_removal(&row.app, &result.evidence_ids) => ("suggest_uninstall", result.risk_score.clamp(60, 100), "ai_unwanted_suspect", "Retrait proposé par l’IA sur un faisceau d’indices vérifiables, à confirmer par le technicien."),
+        "review" | "suggest_uninstall" | "keep" => ("review", result.risk_score.clamp(30, 59), "unknown_review_manually", "Avis IA à vérifier : les éléments cités ne suffisent pas à confirmer un retrait ou une conservation."),
+        _ => { row.ai_text.push_str(" Action non applicable : décision locale conservée."); return false; }
     };
-    row.risk.reasons.push(format!(
-        "Avis IA ({}) : {}",
-        result.confidence, result.reason_fr
-    ));
+    row.risk = Risk {
+        score,
+        recommended_action: action.into(),
+        category: category.into(),
+        reasons: vec![explanation.into()],
+    };
+    row.risk
+        .reasons
+        .extend(ids.iter().filter_map(|id| facts.get(id.as_str())).cloned());
+    true
 }
 pub async fn analyze(
     root: &Path,
@@ -166,8 +208,8 @@ pub async fn analyze(
                 .iter()
                 .filter_map(|a| a["package_name"].as_str())
                 .collect();
-            let data = json!({"instruction":"Retourne un objet JSON contenant apps, un verdict par package demandé.","format":{"apps":[{"package_name":"string","risk_score":"integer 0-100","category":"string","recommended_action":"keep|review|suggest_uninstall|do_not_touch","reason_fr":"français","confidence":"low|medium|high"}]},"apps":missing,"inventaire_pour_comparaison_uniquement":inventory});
-            let mut body = json!({"model":model,"temperature":0.1,"response_format":{"type":"json_object"},"messages":[{"role":"system","content":risk::CONSTANTS["SYSTEM_PROMPT"]},{"role":"user","content":data.to_string()}]});
+            let data = json!({"instruction":"Retourne un objet JSON contenant apps, un verdict par package demandé.","format":{"apps":[{"package_name":"string","risk_score":"integer 0-100","category":"string","recommended_action":"keep|review|suggest_uninstall|do_not_touch","reason_fr":"français","confidence":"low|medium|high","evidence_ids":["identifiants exacts des faits motivant une suspicion"],"counter_evidence_ids":["identifiants exacts des faits rassurants"],"missing_information":["incertitudes"]}]},"apps":missing,"inventaire_pour_comparaison_uniquement":inventory});
+            let mut body = json!({"model":model,"temperature":0.1,"response_format":{"type":"json_object"},"messages":[{"role":"system","content":include_str!("ai_prompt.txt")},{"role":"user","content":data.to_string()}]});
             let mut transient_retries = 0;
             let received = loop {
                 let sent = tokio::select! {r=client.post(format!("{}/chat/completions",base.trim_end_matches('/'))).bearer_auth(key).json(&body).send()=>r,_=cancel.cancelled()=>return Err("Analyse IA annulée".into())};
@@ -206,6 +248,13 @@ pub async fn analyze(
                     continue;
                 }
                 if !status.is_success() {
+                    if status.as_u16() == 402 {
+                        return Err(if provider == "minimax" {
+                            "MiniMax refuse la requête pour un problème de facturation ou de crédits (HTTP 402). Vérifiez le solde et les droits associés à cette clé dans la console MiniMax. Un abonnement Token/Coding Plan utilise une clé d’abonnement distincte de la clé API facturée à l’usage."
+                        } else {
+                            "Le fournisseur IA refuse la requête pour un problème de facturation ou de crédits (HTTP 402). Vérifiez le solde et les droits associés à votre clé dans sa console."
+                        }.into());
+                    }
                     if transient_retries == 0
                         && (status.as_u16() == 429
                             || status.is_server_error()
@@ -219,6 +268,19 @@ pub async fn analyze(
                 }
                 let raw: Value =
                     serde_json::from_slice(&bytes).map_err(|_| "Réponse HTTP IA invalide")?;
+                if provider == "minimax" {
+                    // MiniMax can also report a provider error inside an HTTP 200 response.
+                    if let Some(code) = raw["base_resp"]["status_code"].as_i64().filter(|c| *c != 0)
+                    {
+                        let help = match code {
+                            1008 => "Solde insuffisant. Vérifiez les crédits associés à votre clé MiniMax ; les clés d’abonnement et API à l’usage sont distinctes.",
+                            2056 => "Limite d’utilisation atteinte. Consultez le quota et sa prochaine réinitialisation dans la console MiniMax.",
+                            1004 | 2049 => "Clé API refusée. Vérifiez qu’elle est active et correspond au compte MiniMax utilisé.",
+                            _ => "La requête a été refusée. Consultez la console MiniMax pour vérifier les droits et limites de votre compte.",
+                        };
+                        return Err(format!("MiniMax · erreur {code}. {help}"));
+                    }
+                }
                 break parse(
                     raw["choices"][0]["message"]["content"]
                         .as_str()
@@ -257,6 +319,79 @@ async fn retry_pause(cancel: &CancellationToken) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::risk;
+    fn review_row() -> Row {
+        let app = AppInfo {
+            package_name: "org.example.reader".into(),
+            app_label: "Document Viewer".into(),
+            app_label_source: "apk".into(),
+            installer: "com.android.vending".into(),
+            has_launcher_entry: Some(true),
+            ..Default::default()
+        };
+        let risk = Risk {
+            score: 68,
+            category: "unknown_review_manually".into(),
+            recommended_action: "review".into(),
+            reasons: vec!["Ancienne suspicion faible".into()],
+        };
+        Row {
+            app,
+            risk: risk.clone(),
+            local_risk: risk,
+            ai: None,
+            ai_text: String::new(),
+            note: String::new(),
+            validation: "unreviewed".into(),
+        }
+    }
+    fn keep_opinion() -> AiResult {
+        AiResult {
+            risk_score: 10,
+            recommended_action: "keep".into(),
+            confidence: "high".into(),
+            counter_evidence_ids: vec!["source:store".into(), "launcher:visible".into()],
+            reason_fr: "Unsupported prose must never become evidence".into(),
+            ..Default::default()
+        }
+    }
+    #[test]
+    fn grounded_ai_can_lower_a_weak_local_score_without_invented_prose() {
+        let mut row = review_row();
+        assert!(apply(&mut row, keep_opinion(), &Reputation::default()));
+        assert_eq!(row.risk.score, 10);
+        assert_eq!(row.risk.recommended_action, "keep");
+        assert_eq!(row.local_risk.score, 68);
+        assert!(!row.ai_text.contains("Unsupported prose"));
+        let mut invented = keep_opinion();
+        invented.evidence_ids = vec!["granted:android.permission.READ_SMS".into()];
+        assert!(!apply(&mut row, invented, &Reputation::default()));
+        assert_eq!(row.risk.score, 68);
+    }
+    #[test]
+    fn contradictory_ai_requires_review_and_manual_decisions_win() {
+        let mut row = review_row();
+        row.local_risk.recommended_action = "suggest_uninstall".into();
+        assert!(apply(&mut row, keep_opinion(), &Reputation::default()));
+        assert_eq!(row.risk.category, "conflicting_evidence");
+        assert_eq!(row.risk.recommended_action, "review");
+        for status in ["keep", "remove", "review", "removed"] {
+            row.validation = status.into();
+            assert!(!apply(&mut row, keep_opinion(), &Reputation::default()));
+        }
+    }
+    #[test]
+    fn ai_cannot_propose_removal_for_a_library_alone() {
+        let mut row = review_row();
+        row.app.apk_analysis.ad_libraries = vec!["Google Mobile Ads".into()];
+        let mut opinion = keep_opinion();
+        opinion.recommended_action = "suggest_uninstall".into();
+        opinion.risk_score = 90;
+        opinion.evidence_ids = vec!["ads:Google Mobile Ads".into()];
+        assert!(apply(&mut row, opinion, &Reputation::default()));
+        assert_eq!(row.risk.recommended_action, "review");
+        assert!(row.risk.score < 60);
+    }
     #[test]
     fn untrusted_json_is_normalized() {
         let r=parse("```json\n{\"apps\":[{\"package_name\":\"com.test.app\",\"risk_score\":900,\"recommended_action\":\"delete\",\"confidence\":\"certain\"}]}\n```").unwrap();
@@ -282,6 +417,9 @@ mod tests {
             validation: "keep".into(),
         };
         let ai = AiResult {
+            evidence_ids: vec![],
+            counter_evidence_ids: vec![],
+            missing_information: vec![],
             risk_score: 100,
             category: "spyware".into(),
             recommended_action: "suggest_uninstall".into(),

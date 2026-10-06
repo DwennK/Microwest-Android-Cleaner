@@ -43,7 +43,7 @@ export function ReportsPage({
 }: Props) {
   return (
     <>
-      <div className="mb-5 grid gap-4 lg:grid-cols-3">
+      <div className="mb-3 grid gap-2 lg:grid-cols-3">
         {[
           {
             kind: "html",
@@ -67,12 +67,12 @@ export function ReportsPage({
             icon: Clipboard,
           },
         ].map(({ kind, name, description, icon: Icon }) => (
-          <section className="card export-card p-5" key={kind}>
-            <div className="mb-5 inline-flex rounded-xl bg-muted p-3 text-primary">
-              <Icon size={23} />
+          <section className="card export-card p-3" key={kind}>
+            <div className="inline-flex rounded-lg bg-muted p-1.5 text-primary">
+              <Icon size={16} />
             </div>
-            <h2 className="section-title mb-2">{name}</h2>
-            <p className="mb-5 text-sm leading-6 text-muted-foreground">
+            <h2 className="section-title">{name}</h2>
+            <p className="text-xs leading-5 text-muted-foreground">
               {description}
             </p>
             <Button
@@ -86,7 +86,7 @@ export function ReportsPage({
           </section>
         ))}
       </div>
-      <div className="mb-5 flex flex-wrap gap-3">
+      <div className="mb-3 flex flex-wrap gap-3">
         <Button
           variant="outline"
           disabled={locked || !scan}
@@ -128,15 +128,15 @@ export function ReportsPage({
         )}
       </div>
       {scan?.comparison && (
-        <section className="card mb-5 p-5">
+        <section className="card mb-3 p-3">
           <h2 className="section-title mb-3">Comparaison des scans</h2>
           {scan.comparison.previous_scan_id ? (
             <>
-              <p className="mb-4 text-xs text-muted-foreground">
+              <p className="mb-2 text-xs text-muted-foreground">
                 Scan #{scan.comparison.current_scan_id} comparé au scan #
                 {scan.comparison.previous_scan_id} du même téléphone.
               </p>
-              <div className="mb-4 flex gap-3">
+              <div className="mb-2 flex gap-3">
                 <Badge tone="good">
                   {scan.comparison.new_apps.length} nouvelles
                 </Badge>
@@ -174,7 +174,7 @@ export function ReportsPage({
         </section>
       )}
       <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b p-5">
+        <div className="flex items-center justify-between border-b p-3">
           <h2 className="section-title">Historique local</h2>
           <Button
             variant="ghost"
@@ -221,12 +221,15 @@ export function ReportsPage({
                         disabled={locked}
                         onClick={() =>
                           void run("Chargement du scan", async () => {
-                            acceptScan(
-                              await invoke<Scan>("load_history", {
-                                id: h.id,
-                              }),
+                            const loaded = await invoke<Scan>("load_history", {
+                              id: h.id,
+                            });
+                            acceptScan(loaded);
+                            setNotice(
+                              loaded.analysis_notice ||
+                                `Scan #${h.id} chargé en consultation.`,
                             );
-                            setNotice(`Scan #${h.id} chargé en consultation.`);
+                            await refreshHistory();
                           })
                         }
                       >

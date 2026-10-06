@@ -20,16 +20,16 @@ export function ConfirmDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(540px,90vw)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-card p-7 shadow-2xl">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(540px,90vw)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-card p-4 shadow-2xl">
           <Dialog.Title className="mb-3 text-xl font-semibold">
             {title}
           </Dialog.Title>
           <Dialog.Description asChild>
-            <div className="text-sm leading-6 text-muted-foreground">
+            <div className="text-sm leading-5 text-muted-foreground">
               {children}
             </div>
           </Dialog.Description>
-          <div className="mt-7 flex justify-end gap-3">
+          <div className="mt-3 flex justify-end gap-3">
             <Dialog.Cancel asChild>
               <Button variant="outline">Annuler</Button>
             </Dialog.Cancel>

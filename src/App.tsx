@@ -5,7 +5,6 @@ import {
   Info,
   LoaderCircle,
   ScanLine,
-  ShieldCheck,
   Square,
   X,
 } from "lucide-react";
@@ -51,7 +50,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="flex items-center gap-3 px-6 pb-9 pt-8">
+        <div className="flex items-center gap-2.5 px-4 py-4">
           <div className="flex size-10 items-center justify-center rounded-xl bg-white text-xl font-black tracking-tighter text-[#0b2946]">
             M<span className="text-teal-600">.</span>
           </div>
@@ -64,7 +63,7 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div className="eyebrow px-7 pb-3 text-slate-400">
+        <div className="eyebrow px-5 pb-2 text-slate-400">
           Espace technicien
         </div>
         <nav aria-label="Navigation principale" className="space-y-1 px-3">
@@ -85,25 +84,14 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="mx-5 mt-auto rounded-xl border border-white/10 bg-white/5 p-4">
-          <ShieldCheck size={20} className="mb-3 text-teal-300" />
-          <div className="text-xs font-semibold text-white">
-            Le technicien garde la main
-          </div>
-          <p className="mt-2 text-xs leading-5 text-slate-400">
-            Métadonnées uniquement.
-            <br />
-            Chaque suppression exige une confirmation humaine.
-          </p>
-        </div>
-        <div className="px-6 py-6 text-xs text-slate-400">
+        <div className="mt-auto px-4 py-3 text-xs text-slate-400">
           MICROWEST · VERSION {appVersion}
           <br />
           <span className="text-slate-400">Shopy Phone Sàrl</span>
         </div>
       </aside>
       <div className="min-w-0">
-        <header className="flex h-16 items-center justify-between border-b bg-white px-6">
+        <header className="flex h-10 items-center justify-between border-b bg-white px-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Atelier</span>
             <ChevronRight size={13} />
@@ -133,8 +121,8 @@ export default function App() {
         </header>
         <main className="content">
           <div className="page-heading">
-            <div>
-              <div className="eyebrow mb-2 text-primary">
+            <div className="page-title">
+              <div className="eyebrow text-primary">
                 {page === "connection"
                   ? "01 · Préparer"
                   : page === "scan"
@@ -148,7 +136,7 @@ export default function App() {
               <h1 className="text-[28px] font-semibold tracking-tight">
                 {navigation.find((n) => n.id === page)?.label}
               </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {page === "connection"
                   ? "Connectez le téléphone et vérifiez son autorisation USB."
                   : page === "scan"
@@ -170,7 +158,7 @@ export default function App() {
           {error && (
             <div
               role="alert"
-              className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+              className="mb-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
             >
               <Info size={18} className="mt-0.5 shrink-0" />
               <span className="flex-1 whitespace-pre-wrap break-words">
@@ -184,7 +172,7 @@ export default function App() {
           {notice && (
             <div
               role="status"
-              className="mb-5 flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900"
+              className="mb-3 flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900"
             >
               <Check size={18} className="shrink-0" />
               <span className="flex-1 break-all">{notice}</span>
@@ -197,7 +185,7 @@ export default function App() {
             </div>
           )}
           {busy && (
-            <div role="status" aria-live="polite" className="card mb-5 p-4">
+            <div role="status" aria-live="polite" className="card mb-3 p-4">
               <div className="flex items-center gap-3">
                 <LoaderCircle className="animate-spin text-primary" size={19} />
                 <div className="flex-1">
@@ -225,7 +213,7 @@ export default function App() {
                 <>
                   <progress
                     aria-label="Progression"
-                    className="mt-4 h-1.5 w-full accent-teal-600"
+                    className="mt-2 h-1.5 w-full accent-teal-600"
                     max={progress.total}
                     value={progress.current}
                   />
@@ -241,7 +229,7 @@ export default function App() {
               scan.cancelled ||
               scan.device.state === "historical") &&
             ["results", "exports"].includes(page) && (
-              <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 {scan.demo
                   ? "DÉMONSTRATION · Applications et téléphone fictifs. Aucune opération sur un téléphone."
                   : scan.cancelled
@@ -259,13 +247,6 @@ export default function App() {
           {page === "exports" && <ReportsPage {...app} />}
 
           {page === "settings" && <SettingsPage {...app} />}
-          <footer className="mt-6 flex items-center justify-between border-t pt-5 text-xs text-muted-foreground">
-            <span>Microwest · Outil de diagnostic atelier</span>
-            <span className="flex items-center gap-1.5">
-              <ShieldCheck size={12} />
-              Décisions humaines · Données locales
-            </span>
-          </footer>
         </main>
       </div>
       {detailRow && (
@@ -293,10 +274,9 @@ export default function App() {
         confirm="Lancer l’analyse"
         onConfirm={() =>
           void run("Analyse IA", async () => {
-            setScan(await invoke<Scan>("analyze_ai"));
-            setNotice(
-              "Analyse IA appliquée. Les décisions humaines et protections locales sont conservées.",
-            );
+            const result = await invoke<Scan>("analyze_ai");
+            setScan(result);
+            setNotice(result.analysis_notice || "Analyse IA terminée.");
           })
         }
       >

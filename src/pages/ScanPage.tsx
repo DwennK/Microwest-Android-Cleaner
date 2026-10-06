@@ -21,20 +21,20 @@ export function ScanPage({
   scanNow,
 }: Props) {
   return (
-    <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
-      <section className="card p-8">
-        <div className="mb-7 inline-flex rounded-2xl bg-teal-50 p-4 text-primary">
-          <ScanLine size={32} />
+    <div className="grid items-start gap-3 min-[1000px]:grid-cols-[1.5fr_1fr]">
+      <section className="card p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <ScanLine size={20} className="shrink-0 text-primary" />
+          <h2 className="section-title">
+            Examiner les applications installées
+          </h2>
         </div>
-        <h2 className="mb-3 text-2xl font-semibold">
-          Examiner les applications installées
-        </h2>
-        <p className="mb-7 max-w-xl text-sm leading-7 text-muted-foreground">
+        <p className="mb-3 max-w-xl text-sm leading-5 text-muted-foreground">
           Le scan recueille l’identité des applications, leur provenance et
           leurs accès Android. Les règles de l’atelier calculent ensuite un
           score et proposent les applications à vérifier.
         </p>
-        <div className="mb-5 rounded-xl border bg-slate-50 p-5">
+        <div className="mb-3 rounded-xl border bg-slate-50 p-3">
           <div className="flex items-center gap-3">
             <Smartphone size={20} />
             <div>
@@ -50,7 +50,7 @@ export function ScanPage({
             </Badge>
           </div>
         </div>
-        <label className="mb-7 flex items-center gap-3">
+        <label className="mb-3 flex items-center gap-3">
           <input
             type="checkbox"
             checked={includeSystem}
@@ -64,13 +64,13 @@ export function ScanPage({
           <ScanLine />
           Lancer le scan complet
         </Button>
-        <p className="mt-4 text-xs text-muted-foreground">
+        <p className="mt-2 text-xs text-muted-foreground">
           La durée dépend du nombre d’applications et de la vitesse USB.
         </p>
       </section>
-      <div className="space-y-5">
-        <section className="card p-5">
-          <h2 className="section-title mb-5">Ce qui est analysé</h2>
+      <div className="space-y-3">
+        <section className="card p-3">
+          <h2 className="section-title mb-3">Ce qui est analysé</h2>
           {[
             "Package, version, installateur et date",
             "Permissions demandées et accordées",
@@ -78,18 +78,18 @@ export function ScanPage({
             "Visibilité, rôle HOME, nom et icône APK",
             "Réputation locale et règles de tri atelier",
           ].map((s) => (
-            <div className="mb-4 flex items-center gap-3 text-sm" key={s}>
+            <div className="mb-2 flex items-center gap-3 text-sm" key={s}>
               <CheckCheck size={17} className="shrink-0 text-primary" />
               {s}
             </div>
           ))}
         </section>
-        <div className="rounded-xl bg-[#e8eef4] p-5">
-          <ShieldCheck className="mb-3 text-[#224c70]" />
-          <h3 className="mb-2 text-sm font-semibold">
+        <div className="rounded-xl bg-[#e8eef4] p-3">
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <ShieldCheck size={17} className="text-[#224c70]" />
             Un scan ne supprime rien
           </h3>
-          <p className="text-xs leading-6 text-muted-foreground">
+          <p className="text-xs leading-5 text-muted-foreground">
             Les scores sont des signaux à examiner. La décision finale
             appartient au technicien. Aucun SMS, contact, photo ou contenu de
             notification n’est consulté.

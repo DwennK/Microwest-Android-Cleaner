@@ -26,9 +26,23 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
     "publisher": "Microwest",
     "shortDescription": "Diagnostic Android pour techniciens",
-    "icon": ["icons/icon.ico", "icons/icon.png"]
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": {
+      "../adb/": "adb/",
+      "../tools/aapt2.exe": "tools/aapt2.exe",
+      "../tools/aapt2-NOTICE.txt": "tools/aapt2-NOTICE.txt",
+      "../tools/apksigner.jar": "tools/apksigner.jar",
+      "../tools/apksigner-NOTICE.txt": "tools/apksigner-NOTICE.txt",
+      "../tools/jre/": "tools/jre/"
+    }
   }
 }
