@@ -188,10 +188,96 @@ fn csv_cell(s: &str) -> String {
         s.into()
     }
 }
+fn action_label(value: &str) -> &str {
+    match value {
+        "keep" => "Conserver",
+        "review" => "À vérifier",
+        "suggest_uninstall" => "Retrait proposé",
+        "do_not_touch" => "Protégée",
+        _ => value,
+    }
+}
+fn validation_label(value: &str) -> &str {
+    match value {
+        "unreviewed" => "Non validée",
+        "keep" => "Conserver",
+        "review" => "À vérifier",
+        "remove" => "Retirer",
+        "removed" => "Retirée",
+        _ => value,
+    }
+}
+fn html_field(title: &str, value: &str) -> String {
+    format!(
+        "<div class=\"fact\"><dt>{}</dt><dd>{}</dd></div>",
+        escape(title),
+        if value.trim().is_empty() {
+            "—".into()
+        } else {
+            escape(value)
+        }
+    )
+}
+fn html_application(row: &Row) -> String {
+    let a = &row.app;
+    let tone = match priority(row) {
+        "Urgent" | "À traiter" => "bad",
+        "À vérifier" => "warn",
+        "OK" => "good",
+        _ => "neutral",
+    };
+    let mut s = format!(
+        "<article class=\"application\"><header class=\"application-header\"><span class=\"priority priority-{tone}\">{} · {}/100</span><h3>{}</h3><div class=\"package\">{}</div><p class=\"muted\">Application {} · {}</p></header><div class=\"application-body\"><h3>Analyse</h3><dl class=\"facts\">{}{}</dl><ul>",
+        priority(row), row.risk.score, escape(&a.display_name()), escape(&a.package_name),
+        if a.is_system_app { "système" } else { "utilisateur" },
+        escape(action_label(&row.risk.recommended_action)),
+        html_field("Catégorie", &row.risk.category),
+        html_field("Action proposée", action_label(&row.risk.recommended_action)),
+    );
+    for reason in &row.risk.reasons {
+        s.push_str(&format!("<li>{}</li>", escape(reason)));
+    }
+    s.push_str("</ul>");
+    if !row.ai_text.is_empty() {
+        s.push_str(&format!(
+            "<h3>Avis IA</h3><p class=\"note\">{}</p>",
+            escape(&row.ai_text)
+        ));
+    }
+    s.push_str("<h3>Métadonnées et accès</h3><dl class=\"facts\">");
+    for (label, value) in [
+        ("Installateur", a.installer.clone()),
+        ("Version", a.version_name.clone()),
+        ("SDK cible", a.target_sdk.clone()),
+        ("Installation", a.install_date.clone()),
+        ("Permissions demandées", a.requested_permissions.join(", ")),
+        ("Permissions accordées", a.granted_permissions.join(", ")),
+        ("Capacités actives", a.active_capabilities.join(", ")),
+        ("Visibilité", a.hidden_audit.join("; ")),
+        ("Notifications", a.notification_audit.join("; ")),
+        ("Rôle HOME", boolean_label(a.is_home_app).into()),
+        (
+            "Accueil par défaut",
+            boolean_label(a.is_default_home).into(),
+        ),
+        ("Erreur de collecte", a.dumpsys_error.clone()),
+    ] {
+        if !value.trim().is_empty() {
+            s.push_str(&html_field(label, &value));
+        }
+    }
+    s.push_str(&format!("</dl><div class=\"technician\"><h3>Validation technicien : {}</h3><p class=\"note\">{}</p></div></div></article>", escape(validation_label(&row.validation)), if row.note.trim().is_empty() { "Aucune note.".into() } else { escape(&row.note) }));
+    s
+}
 pub fn html(scan: &Scan) -> String {
-    let mut s=format!("<!doctype html><html lang=\"fr\"><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\"><title>Rapport Microwest Android Cleaner</title><style>body{{font:14px Segoe UI,Arial;color:#183249;margin:36px}}h1{{color:#0b2a4a}}table{{border-collapse:collapse;width:100%;margin:20px 0;font-size:12px}}th,td{{border:1px solid #dbe3e9;padding:9px;vertical-align:top;text-align:left}}th{{background:#edf3f6}}.notice{{padding:15px;background:#edf3f6;border-left:4px solid #008e80}}@media print{{body{{margin:12px}}thead{{display:table-header-group}}tr{{break-inside:avoid}}}}</style><h1>Microwest</h1><p>Shopy Phone Sàrl · Android Cleaner</p><h2>Rapport de diagnostic Android</h2><p>Date : {}<br>Téléphone : {} {}<br>Android : {}<br>Numéro ADB : {}<br>Applications : {}</p><p class=notice>Ce rapport est une aide au diagnostic, pas une certification d'infection. Seules les métadonnées des applications sont analysées. Aucune donnée personnelle du client n'est lue.</p>",chrono::Local::now().format("%d.%m.%Y %H:%M"),escape(&scan.device.manufacturer),escape(&scan.device.model),escape(&scan.device.android_version),escape(&scan.device.serial),scan.rows.len());
+    let mut s = format!(
+        "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\"><title>Rapport Microwest Android Cleaner</title><style>{}</style></head><body><main><header class=\"report-header\"><p class=\"brand\">Microwest</p><p class=\"eyebrow\">Shopy Phone Sàrl · Android Cleaner</p><h1>Rapport de diagnostic Android</h1><dl class=\"identity\"><div><dt>Date d’édition</dt><dd>{}</dd></div><div><dt>Téléphone</dt><dd>{} {}</dd></div><div><dt>Version Android</dt><dd>{}</dd></div><div><dt>Numéro ADB</dt><dd>{}</dd></div><div><dt>Applications analysées</dt><dd>{}</dd></div></dl></header><p class=\"notice\">Ce rapport est une aide au diagnostic, pas une certification d’infection. Seules les métadonnées des applications sont analysées. Aucune donnée personnelle du client n’est lue.</p>",
+        include_str!("report.css"), chrono::Local::now().format("%d.%m.%Y %H:%M"),
+        escape(&scan.device.manufacturer), escape(&scan.device.model), escape(&scan.device.android_version),
+        escape(&scan.device.serial), scan.rows.len()
+    );
     if scan.demo || scan.cancelled {
-        s.push_str("<p class=notice>DÉMONSTRATION / SCAN INCOMPLET — aucune désinstallation autorisée.</p>");
+        s.push_str("<p class=\"notice warning\">DÉMONSTRATION / SCAN INCOMPLET — aucune désinstallation autorisée.</p>");
     }
     s.push_str("<h2>Évolution depuis le scan précédent</h2>");
     match &scan.comparison {
@@ -200,7 +286,7 @@ pub fn html(scan: &Scan) -> String {
             "<p>Premier scan complet de ce téléphone : référence initiale enregistrée.</p>",
         ),
         Some(c) => {
-            s.push_str(&format!("<p>Nouvelles apps : {} · Apps retirées : {} · Inchangées : {} · Risque modifié : {}</p>",c.new_apps.len(),c.removed_apps.len(),c.unchanged_count,c.risk_changes.len()));
+            s.push_str(&format!("<p>Nouvelles applications : {} · Retirées : {} · Inchangées : {} · Risque modifié : {}</p>", c.new_apps.len(), c.removed_apps.len(), c.unchanged_count, c.risk_changes.len()));
             for (title, apps) in [
                 ("Nouvelles applications", &c.new_apps),
                 (
@@ -208,14 +294,19 @@ pub fn html(scan: &Scan) -> String {
                     &c.removed_apps,
                 ),
             ] {
-                s.push_str(&format!("<h3>{title}</h3><ul>"));
+                s.push_str(&format!("<h3>{title}</h3>"));
+                if apps.is_empty() {
+                    s.push_str("<p>Aucune.</p>");
+                    continue;
+                }
+                s.push_str("<ul>");
                 for a in apps {
                     s.push_str(&format!(
-                        "<li>{} ({}) — score {} — validation {}</li>",
+                        "<li>{} ({}) — score {} — validation : {}</li>",
                         escape(&a.app_label),
                         escape(&a.package),
                         a.score,
-                        escape(&a.validation_status)
+                        escape(validation_label(&a.validation_status))
                     ));
                 }
                 s.push_str("</ul>");
@@ -227,32 +318,36 @@ pub fn html(scan: &Scan) -> String {
                     escape(&r.package),
                     r.previous_score,
                     r.current_score,
-                    escape(&r.previous_action),
-                    escape(&r.current_action)
+                    escape(action_label(&r.previous_action)),
+                    escape(action_label(&r.current_action))
                 ));
             }
         }
     }
-    s.push_str("<h2>Résultats du scan</h2><table><thead><tr><th>Priorité / score</th><th>Application</th><th>Analyse</th><th>Métadonnées / accès</th><th>Validation / note</th></tr></thead><tbody>");
-    for r in &scan.rows {
-        let a = &r.app;
-        s.push_str(&format!("<tr><td>{} · {}/100</td><td>{}<br>{}<br>{}</td><td>{}<br>{}<br>{}<br>{}</td><td>Installateur : {}<br>Version : {} · SDK {}<br>Installation : {}<br>Demandées : {}<br>Accordées : {}<br>Actives : {}<br>Visibilité : {}<br>Notifications : {}<br>HOME : {} · Défaut : {}<br>Erreur : {}</td><td>{}<br>{}</td></tr>",priority(r),r.risk.score,escape(&a.display_name()),escape(&a.package_name),if a.is_system_app{"Système"}else{"Utilisateur"},escape(&r.risk.category),escape(&r.risk.recommended_action),escape(&r.risk.reasons.join("; ")),escape(&r.ai_text),escape(&a.installer),escape(&a.version_name),escape(&a.target_sdk),escape(&a.install_date),escape(&a.requested_permissions.join(", ")),escape(&a.granted_permissions.join(", ")),escape(&a.active_capabilities.join(", ")),escape(&a.hidden_audit.join(", ")),escape(&a.notification_audit.join(", ")),boolean_label(a.is_home_app),boolean_label(a.is_default_home),escape(&a.dumpsys_error),escape(&r.validation),escape(&r.note)));
+    s.push_str("<h2>Résultats du scan</h2><p class=\"muted\">Les champs sans information collectée ne sont pas affichés.</p>");
+    if scan.rows.is_empty() {
+        s.push_str("<p>Aucune application dans ce scan.</p>");
     }
-    s.push_str("</tbody></table><h2>Apps désinstallées</h2>");
+    for row in &scan.rows {
+        s.push_str(&html_application(row));
+    }
+    s.push_str("<h2>Résultats des désinstallations</h2>");
     if scan.uninstalled.is_empty() {
         s.push_str("<p>Aucune.</p>");
     }
     for u in &scan.uninstalled {
         s.push_str(&format!(
-            "<p>{} ({}) : {}</p>",
+            "<p><strong>{}</strong> · {} ({}) : {}</p>",
+            if u.success { "Retirée" } else { "Échec" },
             escape(&u.label),
             escape(&u.package),
             escape(&u.result)
         ));
     }
-    s.push_str("</html>");
+    s.push_str("<footer class=\"report-footer\">Microwest · Diagnostic atelier · Décisions humaines · Données locales</footer></main></body></html>");
     s
 }
+
 pub fn export(root: &Path, scan: &Scan, kind: &str, selected: &[String]) -> Result<String> {
     let (name, ext, content) = match kind {
         "html" => ("rapport_android_cleaner", "html", html(scan)),
@@ -286,5 +381,71 @@ mod tests {
         assert!(h.contains("Comparaison indisponible"));
         assert_eq!(csv_cell("=cmd()"), "'=cmd()");
         assert!(csv(&s).unwrap().contains("permissions_granted"));
+    }
+
+    #[test]
+    fn detailed_report_preserves_and_escapes_application_data() {
+        let app = AppInfo {
+            package_name: "com.test.<package>".into(),
+            app_label: "<img src=x onerror=alert(1)>".into(),
+            installer: "store & source".into(),
+            requested_permissions: vec!["permission.<requested>".into()],
+            granted_permissions: vec!["permission.<granted>".into()],
+            active_capabilities: vec!["<overlay>".into()],
+            dumpsys_error: "<collection error>".into(),
+            ..Default::default()
+        };
+        let risk = Risk {
+            score: 75,
+            category: "<category>".into(),
+            recommended_action: "suggest_uninstall".into(),
+            reasons: vec!["<reason>".into()],
+        };
+        let scan = Scan {
+            cancelled: true,
+            rows: vec![Row {
+                app,
+                local_risk: risk.clone(),
+                risk,
+                ai: None,
+                ai_text: "<AI text>".into(),
+                note: "Première ligne\n<script>note</script>".into(),
+                validation: "review".into(),
+            }],
+            uninstalled: vec![UninstallResult {
+                package: "<removed package>".into(),
+                label: "<removed label>".into(),
+                result: "<failure>".into(),
+                success: false,
+            }],
+            ..Default::default()
+        };
+        let html = html(&scan);
+        for text in [
+            "&lt;img src=x onerror=alert(1)&gt;",
+            "com.test.&lt;package&gt;",
+            "store &amp; source",
+            "permission.&lt;requested&gt;",
+            "permission.&lt;granted&gt;",
+            "&lt;overlay&gt;",
+            "&lt;collection error&gt;",
+            "&lt;category&gt;",
+            "&lt;reason&gt;",
+            "&lt;AI text&gt;",
+            "Première ligne\n&lt;script&gt;note&lt;/script&gt;",
+            "&lt;removed package&gt;",
+            "&lt;removed label&gt;",
+            "&lt;failure&gt;",
+            "<strong>Échec</strong>",
+            "Retrait proposé",
+            "Validation technicien : À vérifier",
+            "SCAN INCOMPLET",
+            "aucune désinstallation autorisée",
+        ] {
+            assert!(html.contains(text), "Missing report content: {text}");
+        }
+        assert!(!html.contains("<script>"));
+        assert!(!html.contains("<img"));
+        assert!(html.ends_with("</main></body></html>"));
     }
 }

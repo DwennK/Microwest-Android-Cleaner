@@ -24,7 +24,7 @@
   --secondary: #e8f5f2;
   --secondary-foreground: #086e67;
   --muted: #edf1f5;
-  --muted-foreground: #627286;
+  --muted-foreground: #536579;
   --destructive: #b73543;
   --border: #dce4ec;
 }
@@ -36,6 +36,9 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 button,
 input,
@@ -49,13 +52,22 @@ button {
 button:disabled {
   cursor: not-allowed;
 }
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.sidebar button:focus-visible {
+  outline-color: #5eead4;
+}
 input:not([type="checkbox"]),
 select,
 textarea {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: white;
-  padding: 10px 12px;
+  padding: 9px 12px;
+  min-height: 40px;
   font-size: 14px;
   color: var(--foreground);
   min-width: 0;
@@ -73,18 +85,18 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 table {
   border-collapse: collapse;
   width: 100%;
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
 }
 th {
   padding: 12px 16px;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   font-weight: 600;
@@ -94,22 +106,30 @@ th {
   white-space: nowrap;
 }
 td {
-  padding: 15px 16px;
+  padding: 16px;
+  vertical-align: middle;
   border-bottom: 1px solid #eaf0f4;
 }
 tbody tr:hover {
   background: #f8fbfc;
 }
+tbody tr[data-selected="true"],
+tbody tr[data-selected="true"]:hover {
+  background: #e8f5f2;
+}
+td:first-child {
+  font-variant-numeric: tabular-nums;
+}
 .card {
   background: white;
   border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 2px 5px #17334d03;
+  box-shadow: 0 2px 8px #17334d06;
 }
 .eyebrow {
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 10px;
+  letter-spacing: 0.1em;
+  font-size: 12px;
   font-weight: 700;
 }
 .badge {
@@ -118,16 +138,17 @@ tbody tr:hover {
   gap: 5px;
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.5;
   font-weight: 600;
   white-space: nowrap;
 }
 .badge-good {
-  color: #087c68;
+  color: #086653;
   background: #e7f5ee;
 }
 .badge-warn {
-  color: #93620b;
+  color: #795009;
   background: #fff4d9;
 }
 .badge-bad {
@@ -135,14 +156,14 @@ tbody tr:hover {
   background: #fdecef;
 }
 .badge-neutral {
-  color: #647386;
+  color: #526276;
   background: #eef2f6;
 }
 .detail-grid {
   display: grid;
   grid-template-columns: 130px minmax(0, 1fr);
   gap: 12px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .detail-grid dt {
   color: var(--muted-foreground);
@@ -153,7 +174,7 @@ tbody tr:hover {
 }
 .app-shell {
   display: grid;
-  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   min-height: 100vh;
 }
 .sidebar {
@@ -173,7 +194,7 @@ tbody tr:hover {
   text-align: left;
   padding: 12px 14px;
   border-radius: 9px;
-  font-size: 13px;
+  font-size: 14px;
   transition: background 0.15s;
 }
 .nav-item:hover {
@@ -188,22 +209,49 @@ tbody tr:hover {
   font-size: 18px;
   font-weight: 650;
   letter-spacing: -0.02em;
+  line-height: 1.4;
 }
 .muted {
   color: var(--muted-foreground);
 }
 .content {
-  padding: 28px 32px 36px;
+  padding: 32px;
   max-width: 1760px;
   margin: auto;
 }
 @media (max-width: 1180px) {
   .app-shell {
-    grid-template-columns: 190px minmax(0, 1fr);
+    grid-template-columns: 216px minmax(0, 1fr);
   }
   .content {
     padding: 24px;
   }
+}
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.page-heading h1 {
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+.page-heading p {
+  max-width: 70ch;
+  line-height: 1.6;
+}
+.export-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.export-card button {
+  margin-top: auto;
 }
 @media (prefers-reduced-motion: reduce) {
   *,

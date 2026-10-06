@@ -13,6 +13,8 @@ src-tauri/target/
 src-tauri/gen/
 *.local
 test-results/
+.playwright-cli/
+output/playwright/
 backup-import-*/
 *.backup-*
 build/

@@ -1,5 +1,13 @@
 # Validation de la migration
 
+## Améliorations de présentation 2.0.1 — 6 octobre 2026
+
+- Les cinq écrans, la fiche d’application et les composants communs sont séparés. `App.tsx` passe de 2 005 à 317 lignes. Un hook commun gère le verrouillage immédiat, la progression, les erreurs et l’annulation. Les règles de diagnostic et commandes Android ne sont pas modifiées.
+- TypeScript et le build Vite passent ; les 3 tests Vitest, 14 tests unitaires Rust et 4 tests d’intégration Rust passent. `cargo fmt --check` et Clippy avec `-D warnings` passent. Le nouveau test de rapport vérifie la conservation et l’échappement des données d’application, notes, raisons, avis IA et résultats de suppression.
+- Parcours Playwright dans Edge avec transport Tauri simulé : paramètres, démonstration, recherche, sélection, fiche, note, validation « Conserver », export HTML, historique, progression, double clic, annulation et reprise après erreur. Les suppressions restent bloquées pour les scans fictifs, annulés et historiques ; aucune commande de suppression n’a été exécutée.
+- Rendu contrôlé à 1 000 × 720 et 1 440 × 960. Les rapports HTML autonomes sont imprimés en A4, puis rendus avec Poppler pour inspection. Un rapport de stress conserve les 60 permissions longues et les 50 lignes de notes sur 5 pages, sans débordement horizontal. Les champs de métadonnées vides sont omis ; les données présentes sont conservées. Les formats CSV et plan texte restent inchangés.
+- Ces contrôles ne remplacent pas les essais sur téléphone réel et poste Windows propre listés ci-dessous.
+
 Vérifications réalisées le 29 septembre 2026 sur Windows (build système 26200), Rust 1.98.1, Node.js 24.19. Ce document distingue les vérifications automatisées, les essais sur ce poste et les validations externes.
 
 ## Référence initiale

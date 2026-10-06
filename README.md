@@ -67,7 +67,9 @@ Les réglages `ai_provider`, `openai_model`, `openai_base_url`, `minimax_model`,
 
 ## Architecture et référence Python
 
-`src/` contient la présentation, les filtres et les composants. `src-tauri/src/` sépare modèle, ADB/processus, métadonnées APK, règles, workflow, SQLite, IA, rapports et commandes Tauri. Les opérations longues sont asynchrones et la progression utilise `operation-progress`. Une exclusion mutuelle empêche deux scans, modifications ou suppressions simultanés. Aucune commande shell générale, permission filesystem frontend ou accès réseau frontend n'est exposé.
+`src/App.tsx` compose la navigation et les cinq écrans de `src/pages/`. `src/hooks/useAppController.ts` conserve l’état et les actions partagés entre les écrans ; `useOperation.ts` centralise le verrouillage immédiat, les messages, la progression et l’annulation des opérations. Les composants communs et la fiche d’application sont dans `src/components/`. Les espacements, couleurs et styles de contrôle communs sont dans `src/styles.css`.
+
+`src-tauri/src/` sépare modèle, ADB/processus, métadonnées APK, règles, workflow, SQLite, IA, rapports et commandes Tauri. Le rapport HTML embarque `report.css` et reste autonome, avec des fiches détaillées par application et une mise en page A4 à l’impression. Les opérations longues sont asynchrones et la progression utilise `operation-progress`. Une exclusion mutuelle empêche deux scans, modifications ou suppressions simultanés. Aucune commande shell générale, permission filesystem frontend ou accès réseau frontend n'est exposé.
 
 L'ancienne application, ses tests et son packaging sont isolés dans `legacy/python/` comme référence temporaire, **exclus de la distribution et du build courant**. Ils restent disponibles jusqu'à validation matérielle de la nouvelle application. Il n'existe aucun pont Rust–Python. [Inventaire de migration](docs/MIGRATION.md) · [Vérifications et limites](docs/VALIDATION.md).
 

@@ -6,6 +6,8 @@ Les fichiers se trouvent dans `src-tauri/target/release/bundle/nsis/` et `src-ta
 
 Le workflow `.github/workflows/windows.yml` teste et construit sur Windows, conserve les installateurs en artefacts 14 jours et dispose uniquement de `contents: read`. Il ne crée ni release ni tag, ne publie aucun fichier publiquement et ne nécessite aucun secret pour les builds non signés.
 
+Une distribution publique peut être publiée manuellement dans les Releases GitHub après validation : tag correspondant à la version de `package.json`, Cargo et Tauri, installateurs EXE/MSI du même code et fichier `SHA256SUMS.txt`. La version 2.0.1 porte uniquement sur la présentation, l’organisation du frontend et le rapport HTML imprimable. Les installateurs restent non signés. La publication d’une release ne met pas automatiquement à jour les postes installés.
+
 ## Signature Authenticode
 
 La signature n'est pas activée : aucun certificat ni identité de signataire n'a été fourni. Pour la préparer :
