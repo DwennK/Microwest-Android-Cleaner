@@ -43,14 +43,14 @@ export function SettingsPage({
   setPage,
 }: Props) {
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.3fr_1fr]">
-      <section className="card p-6">
+    <div className="grid gap-5 xl:grid-cols-[1.3fr_1fr]">
+      <section className="card p-5">
         <div className="mb-5 flex items-center gap-3">
           <Sparkles size={21} className="text-primary" />
           <h2 className="section-title">Analyse IA optionnelle</h2>
           <Badge>Sur demande uniquement</Badge>
         </div>
-        <p className="mb-6 text-xs leading-6 text-muted-foreground">
+        <p className="mb-5 text-xs leading-6 text-muted-foreground">
           L’analyse ne s’exécute que sur demande. Elle transmet l’inventaire et
           les métadonnées au fournisseur choisi. Les clés restent côté moteur et
           ne sont jamais renvoyées à l’interface.
@@ -134,7 +134,7 @@ export function SettingsPage({
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
-            <p className="mb-6 text-xs text-muted-foreground">
+            <p className="mb-5 text-xs text-muted-foreground">
               Compatibilité avec les réglages historiques .env du moteur.
             </p>
             <Button type="submit" disabled={locked}>
@@ -148,8 +148,8 @@ export function SettingsPage({
           </p>
         )}
       </section>
-      <div className="space-y-6">
-        <section className="card p-6">
+      <div className="space-y-5">
+        <section className="card p-5">
           <h2 className="section-title mb-4">Environnement local</h2>
           <dl className="detail-grid !grid-cols-[70px_1fr]">
             <dt>ADB</dt>
@@ -196,7 +196,7 @@ export function SettingsPage({
             </Button>
           </div>
         </section>
-        <section className="card p-6">
+        <section className="card p-5">
           <h2 className="section-title mb-2">Reprendre les données Python</h2>
           <p className="mb-4 text-xs leading-6 text-muted-foreground">
             Sélectionnez le dossier de l’ancienne application. La base et les
@@ -226,7 +226,7 @@ export function SettingsPage({
             Importer un dossier
           </Button>
         </section>
-        <section className="rounded-xl border border-dashed border-slate-300 p-6">
+        <section className="rounded-xl border border-dashed border-slate-300 p-5">
           <h2 className="section-title mb-2">Démonstration</h2>
           <p className="mb-4 text-xs leading-6 text-muted-foreground">
             Trois applications fictives pour explorer le triage. Aucun téléphone

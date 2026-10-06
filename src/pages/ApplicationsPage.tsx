@@ -70,7 +70,7 @@ export function ApplicationsPage({
 }: Props) {
   return (
     <>
-      <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-4 xl:grid-cols-4">
         {[
           {
             label: "Applications analysées",
@@ -98,12 +98,12 @@ export function ApplicationsPage({
           },
         ].map(({ label, value, icon: Icon, color }) => (
           <div
-            className="card flex items-start justify-between p-5"
+            className="card flex items-start justify-between p-4"
             key={label}
           >
             <div>
               <div className="mb-2 text-xs text-muted-foreground">{label}</div>
-              <div className="text-3xl font-semibold tracking-tight">
+              <div className="text-2xl font-semibold tracking-tight">
                 {value}
               </div>
             </div>
@@ -124,10 +124,10 @@ export function ApplicationsPage({
         </details>
       ) : null}
       <section className="card overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
           <div>
             <h2 className="section-title">Inventaire des applications</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               {scan
                 ? `${scan.device.model || "Téléphone"} · ${scan.scan_id ? `Scan #${scan.scan_id}` : "Non enregistré"}`
                 : "Aucun scan réalisé"}
@@ -149,11 +149,11 @@ export function ApplicationsPage({
             Analyse IA
           </Button>
         </div>
-        <div className="flex flex-wrap gap-3 border-b p-4">
+        <div className="flex flex-wrap gap-2 border-b p-3">
           <div className="relative min-w-60 flex-1">
             <Search
               size={16}
-              className="absolute left-3 top-3 text-muted-foreground"
+              className="absolute left-3 top-2.5 text-muted-foreground"
             />
             <input
               aria-label="Rechercher une application"
@@ -350,10 +350,10 @@ export function ApplicationsPage({
                           <div className="max-w-72 truncate font-semibold">
                             {r.app.app_label || r.app.package_name}
                           </div>
-                          <div className="mt-1 max-w-72 truncate font-mono text-xs text-muted-foreground">
+                          <div className="mt-0.5 max-w-72 truncate font-mono text-xs text-muted-foreground">
                             {r.app.package_name}
                           </div>
-                          <div className="mt-1 flex gap-1">
+                          <div className="mt-0.5 flex gap-1">
                             {r.app.has_launcher_entry === false && (
                               <Badge tone="warn">Sans launcher</Badge>
                             )}
@@ -388,7 +388,7 @@ export function ApplicationsPage({
                             ? "Galaxy Store"
                             : r.app.installer || "Inconnue"}
                       </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
+                      <div className="mt-0.5 text-xs text-muted-foreground">
                         {r.app.is_system_app
                           ? "Système"
                           : safeInstallers.includes(r.app.installer)
@@ -431,7 +431,7 @@ export function ApplicationsPage({
             </table>
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <ShieldCheck size={16} />
             <span>

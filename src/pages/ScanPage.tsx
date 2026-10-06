@@ -21,7 +21,7 @@ export function ScanPage({
   scanNow,
 }: Props) {
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+    <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
       <section className="card p-8">
         <div className="mb-7 inline-flex rounded-2xl bg-teal-50 p-4 text-primary">
           <ScanLine size={32} />
@@ -34,7 +34,7 @@ export function ScanPage({
           leurs accès Android. Les règles de l’atelier calculent ensuite un
           score et proposent les applications à vérifier.
         </p>
-        <div className="mb-6 rounded-xl border bg-slate-50 p-5">
+        <div className="mb-5 rounded-xl border bg-slate-50 p-5">
           <div className="flex items-center gap-3">
             <Smartphone size={20} />
             <div>
@@ -68,8 +68,8 @@ export function ScanPage({
           La durée dépend du nombre d’applications et de la vitesse USB.
         </p>
       </section>
-      <div className="space-y-6">
-        <section className="card p-6">
+      <div className="space-y-5">
+        <section className="card p-5">
           <h2 className="section-title mb-5">Ce qui est analysé</h2>
           {[
             "Package, version, installateur et date",
@@ -84,7 +84,7 @@ export function ScanPage({
             </div>
           ))}
         </section>
-        <div className="rounded-xl bg-[#e8eef4] p-6">
+        <div className="rounded-xl bg-[#e8eef4] p-5">
           <ShieldCheck className="mb-3 text-[#224c70]" />
           <h3 className="mb-2 text-sm font-semibold">
             Un scan ne supprime rien

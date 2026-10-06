@@ -103,7 +103,7 @@ export default function App() {
         </div>
       </aside>
       <div className="min-w-0">
-        <header className="flex h-[76px] items-center justify-between border-b bg-white px-8">
+        <header className="flex h-16 items-center justify-between border-b bg-white px-6">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Atelier</span>
             <ChevronRight size={13} />
@@ -259,7 +259,7 @@ export default function App() {
           {page === "exports" && <ReportsPage {...app} />}
 
           {page === "settings" && <SettingsPage {...app} />}
-          <footer className="mt-8 flex items-center justify-between border-t pt-5 text-xs text-muted-foreground">
+          <footer className="mt-6 flex items-center justify-between border-t pt-5 text-xs text-muted-foreground">
             <span>Microwest · Outil de diagnostic atelier</span>
             <span className="flex items-center gap-1.5">
               <ShieldCheck size={12} />

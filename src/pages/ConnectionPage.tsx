@@ -54,16 +54,16 @@ export function ConnectionPage({
   setReport,
 }: Props) {
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
+    <div className="grid gap-5 xl:grid-cols-[1.45fr_1fr]">
       <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b p-6">
+        <div className="flex items-center justify-between border-b p-5">
           <h2 className="section-title">Téléphone connecté</h2>
           <Badge tone={connected ? "good" : "neutral"}>
             {connected ? "Prêt à analyser" : "En attente"}
           </Badge>
         </div>
-        <div className="p-6">
-          <div className="mb-7 flex items-center gap-6">
+        <div className="p-5">
+          <div className="mb-7 flex items-center gap-5">
             <div
               className={`flex h-32 w-24 shrink-0 items-center justify-center rounded-2xl ${connected ? "bg-teal-50 text-primary" : "bg-slate-100 text-slate-400"}`}
             >
@@ -146,8 +146,8 @@ export function ConnectionPage({
           </div>
         </div>
       </section>
-      <div className="space-y-6">
-        <section className="card p-6">
+      <div className="space-y-5">
+        <section className="card p-5">
           <h2 className="section-title mb-5">Préparer la connexion</h2>
           {[
             "Déverrouiller le téléphone et activer les options développeur.",
@@ -162,7 +162,7 @@ export function ConnectionPage({
             </div>
           ))}
         </section>
-        <section className="card p-6">
+        <section className="card p-5">
           <h2 className="section-title mb-2">Outils de connexion</h2>
           <p className="mb-5 text-xs leading-5 text-muted-foreground">
             Utilisez la réparation si le téléphone reste hors ligne. Le
@@ -231,7 +231,7 @@ export function ConnectionPage({
         </section>
       </div>
       {diagnostic && (
-        <section className="card p-6 xl:col-span-2">
+        <section className="card p-5 xl:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="section-title">Diagnostic ADB</h2>
             <div className="flex gap-2">

@@ -43,7 +43,7 @@ export function ReportsPage({
 }: Props) {
   return (
     <>
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
+      <div className="mb-5 grid gap-4 lg:grid-cols-3">
         {[
           {
             kind: "html",
@@ -67,12 +67,12 @@ export function ReportsPage({
             icon: Clipboard,
           },
         ].map(({ kind, name, description, icon: Icon }) => (
-          <section className="card export-card p-6" key={kind}>
+          <section className="card export-card p-5" key={kind}>
             <div className="mb-5 inline-flex rounded-xl bg-muted p-3 text-primary">
               <Icon size={23} />
             </div>
             <h2 className="section-title mb-2">{name}</h2>
-            <p className="mb-6 text-sm leading-6 text-muted-foreground">
+            <p className="mb-5 text-sm leading-6 text-muted-foreground">
               {description}
             </p>
             <Button
@@ -86,7 +86,7 @@ export function ReportsPage({
           </section>
         ))}
       </div>
-      <div className="mb-6 flex flex-wrap gap-3">
+      <div className="mb-5 flex flex-wrap gap-3">
         <Button
           variant="outline"
           disabled={locked || !scan}
@@ -128,7 +128,7 @@ export function ReportsPage({
         )}
       </div>
       {scan?.comparison && (
-        <section className="card mb-6 p-6">
+        <section className="card mb-5 p-5">
           <h2 className="section-title mb-3">Comparaison des scans</h2>
           {scan.comparison.previous_scan_id ? (
             <>

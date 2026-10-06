@@ -48,9 +48,9 @@ export function AppIcon({ row }: { row: Row }) {
     };
   }, [row.app.package_name, row.app.icon_path]);
   return src ? (
-    <img src={src} alt="" className="size-10 rounded-xl object-contain" />
+    <img src={src} alt="" className="size-9 rounded-xl object-contain" />
   ) : (
-    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg font-semibold text-slate-500">
+    <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg font-semibold text-slate-500">
       {(row.app.app_label || row.app.package_name).slice(0, 1).toUpperCase()}
     </div>
   );
