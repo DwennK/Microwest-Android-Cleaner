@@ -26,6 +26,9 @@ async fn minimax_format_fallback_and_missing_verdict_retry_are_atomic() {
                     Err(e) => panic!("{e}"),
                 }
             };
+            // Accepted sockets can inherit the listener's nonblocking mode on Windows.
+            // The request reader below is synchronous and relies on its read timeout.
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
