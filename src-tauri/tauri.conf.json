@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Microwest Android Cleaner",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "identifier": "ch.microwest.android-cleaner",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Microwest · Android Cleaner",
+        "title": "Microwest Â· Android Cleaner",
         "width": 1440,
         "height": 960,
         "minWidth": 1000,

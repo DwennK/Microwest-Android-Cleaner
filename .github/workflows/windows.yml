@@ -27,6 +27,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Install verified APK signature tools
+        run: python scripts/install-analysis-tools.py
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --features test-support -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --features test-support
@@ -42,8 +44,6 @@ jobs:
           foreach ($item in $expected.GetEnumerator()) {
             if ((Get-FileHash -LiteralPath $item.Key -Algorithm SHA256).Hash -ne $item.Value) { throw "Unexpected Android binary: $($item.Key)" }
           }
-      - name: Install verified APK signature tools
-        run: python scripts/install-analysis-tools.py
       - name: Build Windows installers (no public release)
         run: npm run build:desktop
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
