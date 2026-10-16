@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { appVersion, navigation, stateLabels } from "./app-config";
 import { Badge } from "./components/app-primitives";
+import { AppUpdater } from "./components/AppUpdater";
 import { AppDetails } from "./components/AppDetails";
 import { ConfirmDialog } from "./components/ui/alert-dialog";
 import { Button } from "./components/ui/button";
@@ -155,6 +156,7 @@ export default function App() {
               </Button>
             )}
           </div>
+          <AppUpdater locked={locked} run={run} page={page} />
           {error && (
             <div
               role="alert"
@@ -198,6 +200,7 @@ export default function App() {
                   "Scan du téléphone",
                   "Analyse IA",
                   "Désinstallation",
+                  "Mise à jour de l’application",
                 ].includes(busy) && (
                   <Button
                     variant="outline"

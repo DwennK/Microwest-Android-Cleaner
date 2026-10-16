@@ -26,6 +26,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: python -m unittest discover -s scripts -p "test_*.py"
       - run: npm run build
       - name: Install verified APK signature tools
         run: python scripts/install-analysis-tools.py
@@ -44,12 +45,47 @@ jobs:
           foreach ($item in $expected.GetEnumerator()) {
             if ((Get-FileHash -LiteralPath $item.Key -Algorithm SHA256).Hash -ne $item.Value) { throw "Unexpected Android binary: $($item.Key)" }
           }
-      - name: Build Windows installers (no public release)
-        run: npm run build:desktop
+      - name: Build signed EXE and updater artifacts
+        if: github.event_name != 'pull_request'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw "Missing updater signing key" }
+          npm run build:desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/prepare-release.py
+      - name: Verify real updater signature and reject tampering
+        if: github.event_name != 'pull_request'
+        run: cargo run --locked --manifest-path src-tauri/Cargo.toml --example verify_update
+      - name: Build pull request EXE without release secrets
+        if: github.event_name == 'pull_request'
+        run: |
+          '{"bundle":{"createUpdaterArtifacts":false}}' | Set-Content -Encoding utf8 updater-disabled.json
+          npm run tauri -- build --config updater-disabled.json -- --locked
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: microwest-windows-x64-unsigned
-          path: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
+          name: microwest-windows-x64
+          path: ${{ github.event_name == 'pull_request' && 'src-tauri/target/release/bundle/nsis/*-setup.exe' || 'release-output/*' }}
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name microwest-windows-x64 --dir release-output
+      - name: Publish signed EXE release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd release-output
+          sha256sum --check SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "Microwest Android Cleaner ${GITHUB_REF_NAME#v}" --generate-notes ./*
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

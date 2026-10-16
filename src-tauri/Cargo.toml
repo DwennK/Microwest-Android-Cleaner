@@ -1,6 +1,6 @@
 [package]
 name = "microwest-android-cleaner"
-version = "2.0.2"
+version = "2.0.3"
 description = "Microwest Android Cleaner"
 edition = "2021"
 default-run = "microwest-android-cleaner"
@@ -39,8 +39,12 @@ csv = "1"
 base64 = "0.22"
 open = "5"
 dotenvy = "0.15"
+tauri-plugin-updater = "2"
 
 [profile.release]
 lto = "thin"
 strip = true
 codegen-units = 1
+
+[dev-dependencies]
+minisign-verify = "0.2"

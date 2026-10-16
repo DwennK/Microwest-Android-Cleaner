@@ -10,11 +10,14 @@ pub mod process;
 pub mod reports;
 pub mod risk;
 pub mod scanner;
+pub mod updates;
 pub mod workflow;
 use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::PendingUpdate::default())
         .setup(|app| {
             let engine = commands::Engine::new(app.handle()).map_err(std::io::Error::other)?;
             app.manage(engine);
@@ -22,6 +25,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap,
+            updates::check_update,
+            updates::install_update,
             commands::detect_devices,
             commands::daemon_action,
             commands::diagnostic,

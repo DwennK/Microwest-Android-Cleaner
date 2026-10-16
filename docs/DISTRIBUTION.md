@@ -4,9 +4,9 @@
 
 L’installateur se trouve dans `src-tauri/target/release/bundle/nsis/`. Le format MSI n’est plus généré pour les prochaines releases. La fonctionnalité Cargo `test-support` est réservée aux tests et ne doit pas être activée pour distribuer l'application.
 
-Le workflow `.github/workflows/windows.yml` teste et construit sur Windows, conserve les installateurs en artefacts 14 jours et dispose uniquement de `contents: read`. Il ne crée ni release ni tag, ne publie aucun fichier publiquement et ne nécessite aucun secret pour les builds non signés.
+Le workflow `.github/workflows/windows.yml` teste et construit sur Windows, conserve les installateurs en artefacts 14 jours et dispose uniquement de `contents: read`. Les builds de pull requests restent sans secret. Les builds internes signent les mises à jour avec le secret TAURI_SIGNING_PRIVATE_KEY. Un tag vX.Y.Z correspondant à la version du code publie automatiquement une release après tous les contrôles.
 
-Une distribution publique peut être publiée manuellement dans les Releases GitHub après validation : tag correspondant à la version de `package.json`, Cargo et Tauri, installateur EXE du même code et fichier `SHA256SUMS.txt`. La version 2.0.1 porte uniquement sur la présentation, l’organisation du frontend et le rapport HTML imprimable. Les installateurs restent non signés. La publication d’une release ne met pas automatiquement à jour les postes installés.
+Une distribution publique peut être publiée manuellement dans les Releases GitHub après validation : tag correspondant à la version de `package.json`, Cargo et Tauri, installateur EXE du même code et fichier `SHA256SUMS.txt`. La version 2.0.1 porte uniquement sur la présentation, l’organisation du frontend et le rapport HTML imprimable. Les installateurs restent non signés. À partir de la 2.0.3, l’application recherche les releases GitHub au démarrage puis toutes les six heures et propose leur installation. La 2.0.3 doit être installée manuellement depuis une version antérieure.
 
 ## Signature Authenticode
 
@@ -27,3 +27,13 @@ ADB 37.0.0-14910828 a été conservé : l'empreinte de son exécutable a été c
 Le workflow vérifie les empreintes des quatre binaires ; il ne les télécharge pas à chaque build. Leur mise à jour doit modifier simultanément le binaire, la notice et l'empreinte attendue après vérification de sa provenance. `node scripts/install-aapt2.mjs --update` permet une mise à jour explicite vers la version épinglée par le helper.
 
 Documentation officielle : [installateurs Windows Tauri](https://v2.tauri.app/distribute/windows-installer/), [signature Windows](https://v2.tauri.app/distribute/sign/windows/), [configuration Tauri](https://v2.tauri.app/reference/config/).
+
+## Mises à jour GitHub (2.0.3 et suivantes)
+
+Les releases contiennent un seul installateur EXE, sa signature `.sig`, `latest.json` et `SHA256SUMS.txt`. Les deux fichiers techniques ne sont pas des installateurs supplémentaires. `scripts/prepare-release.py` génère le manifeste avec le nom exact du fichier publié. Le workflow vérifie la signature réelle et rejette un EXE modifié avant publication.
+
+L’application vérifie `https://github.com/DwennK/Microwest-Android-Cleaner/releases/latest/download/latest.json`. Une nouvelle version est annoncée sans interrompre le travail. **Installer la mise à jour** demande confirmation, télécharge et vérifie la signature, puis lance l’installateur. Le verrou Rust partagé interdit cette opération pendant un scan, une analyse IA ou une désinstallation. Les données enregistrées restent dans le dossier utilisateur ; les résultats non enregistrés doivent être exportés. Une vérification manuelle est disponible dans les paramètres. Les builds de développement ne s’auto-installent pas.
+
+La clé de signature initiale est sauvegardée dans `%USERPROFILE%/.tauri/microwest-android-cleaner.key` sur le poste de préparation et dans le secret GitHub `TAURI_SIGNING_PRIVATE_KEY`. Conserver cette sauvegarde hors du dépôt : perdre ou remplacer la clé empêche les versions déjà installées d’accepter de futures mises à jour. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` est facultatif, seulement si la clé est protégée par un mot de passe.
+
+Pour publier : mettre à jour les versions package.json/package-lock.json/Cargo.toml/Cargo.lock/tauri.conf.json, puis pousser le tag correspondant. La publication ne démarre qu’après les tests et la vérification des signatures. Les anciennes versions sans updater nécessitent une installation manuelle initiale.

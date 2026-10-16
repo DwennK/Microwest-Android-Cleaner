@@ -79,7 +79,7 @@ impl Engine {
             cancel,
         })
     }
-    fn begin(&self) -> Result<(OwnedSemaphorePermit, CancellationToken)> {
+    pub(crate) fn begin(&self) -> Result<(OwnedSemaphorePermit, CancellationToken)> {
         let permit = self
             .operation
             .clone()
@@ -791,6 +791,30 @@ pub async fn import_legacy(app: tauri::AppHandle, state: State<'_, Engine>) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn updater_operation_cannot_interrupt_scan_or_replace_its_cancel_token() {
+        let engine = Engine {
+            root: PathBuf::new(),
+            resources: PathBuf::new(),
+            scan: Mutex::new(None),
+            operation: Arc::new(Semaphore::new(1)),
+            cancel: Mutex::new(CancellationToken::new()),
+            backup: None,
+            diagnostic: Mutex::new(String::new()),
+        };
+        let (scan_permit, scan_cancel) = engine.begin().unwrap();
+        assert!(engine.begin().is_err());
+        assert!(!scan_cancel.is_cancelled());
+        engine.cancel.lock().unwrap().cancel();
+        assert!(scan_cancel.is_cancelled());
+        drop(scan_permit);
+        let (update_permit, update_cancel) = engine.begin().unwrap();
+        assert!(!update_cancel.is_cancelled());
+        assert!(engine.begin().is_err());
+        drop(update_permit);
+        assert!(engine.begin().is_ok());
+    }
+
     #[test]
     fn no_delete_without_real_complete_scan() {
         let mut s = Scan::default();

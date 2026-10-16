@@ -35,3 +35,6 @@ reports/*
 !reports/.gitkeep
 cache/app_icons/*
 !cache/app_icons/.gitkeep
+
+release-output/
+updater-disabled.json

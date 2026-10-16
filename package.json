@@ -1,7 +1,7 @@
 {
   "name": "microwest-android-cleaner",
   "private": true,
-  "version": "2.0.2",
+  "version": "2.0.3",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
@@ -28,10 +28,12 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
     "@tauri-apps/cli": "^2.8.0",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",
     "fflate": "^0.8.3",
+    "jsdom": "^30.1.3",
     "prettier": "^3.9.9",
     "tailwindcss": "^4.1.0",
     "typescript": "~5.9.2",
