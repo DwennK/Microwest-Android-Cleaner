@@ -14,7 +14,6 @@
         "languages": ["French", "English"],
         "displayLanguageSelector": true
       },
-      "wix": { "language": "fr-FR" },
       "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true }
     }
   }

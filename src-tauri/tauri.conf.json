@@ -27,8 +27,7 @@
   "bundle": {
     "active": true,
     "targets": [
-      "nsis",
-      "msi"
+      "nsis"
     ],
     "publisher": "Microwest",
     "shortDescription": "Diagnostic Android pour techniciens",

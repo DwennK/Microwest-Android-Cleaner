@@ -51,6 +51,5 @@ jobs:
           name: microwest-windows-x64-unsigned
           path: |
             src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error
           retention-days: 14

@@ -33,7 +33,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --features test-support
 npm run build:desktop
 ```
 
-Les installateurs sont écrits dans `src-tauri/target/release/bundle/nsis/` et `src-tauri/target/release/bundle/msi/`. Le workflow Windows produit ces fichiers en artefacts GitHub Actions, sans publier de release. Voir [distribution et signature](docs/DISTRIBUTION.md).
+L’installateur EXE est écrit dans `src-tauri/target/release/bundle/nsis/`. Le workflow Windows produit ces fichiers en artefacts GitHub Actions, sans publier de release. Voir [distribution et signature](docs/DISTRIBUTION.md).
 
 Les tests Rust comprennent 600 comparaisons générées et 49 évaluations issues directement des tests Python existants, les parsers, SQLite, les rapports, les garde-fous IA et de suppression. Un exécutable ADB **simulé**, compilé uniquement avec `test-support`, teste le parcours complet et les processus : détection, scan, annulation, déconnexion, timeout et drainage des sorties. Ces tests ne constituent pas une validation sur un téléphone réel.
 

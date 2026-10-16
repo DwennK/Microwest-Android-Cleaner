@@ -1,12 +1,12 @@
 # Distribution Windows
 
-`npm ci` puis `npm run build:desktop` produisent un exécutable natif, un installateur NSIS par utilisateur et un MSI. Les ressources React sont incorporées dans l'exécutable ; ADB, ses deux DLL, aapt2 et leurs notices sont joints comme ressources. Aucun Python, PySide6, serveur Node ou environnement virtuel n'est distribué. WebView2 Evergreen est requis ; l'installateur télécharge son bootstrapper s'il manque. Prévoir une connexion lors d'une première installation sans WebView2.
+`npm ci` puis `npm run build:desktop` produisent un exécutable natif, un seul installateur EXE (NSIS) par utilisateur. Les ressources React sont incorporées dans l'exécutable ; ADB, ses deux DLL, aapt2 et leurs notices sont joints comme ressources. Aucun Python, PySide6, serveur Node ou environnement virtuel n'est distribué. WebView2 Evergreen est requis ; l'installateur télécharge son bootstrapper s'il manque. Prévoir une connexion lors d'une première installation sans WebView2.
 
-Les fichiers se trouvent dans `src-tauri/target/release/bundle/nsis/` et `src-tauri/target/release/bundle/msi/`. La fonctionnalité Cargo `test-support` est réservée aux tests et ne doit pas être activée pour distribuer l'application.
+L’installateur se trouve dans `src-tauri/target/release/bundle/nsis/`. Le format MSI n’est plus généré pour les prochaines releases. La fonctionnalité Cargo `test-support` est réservée aux tests et ne doit pas être activée pour distribuer l'application.
 
 Le workflow `.github/workflows/windows.yml` teste et construit sur Windows, conserve les installateurs en artefacts 14 jours et dispose uniquement de `contents: read`. Il ne crée ni release ni tag, ne publie aucun fichier publiquement et ne nécessite aucun secret pour les builds non signés.
 
-Une distribution publique peut être publiée manuellement dans les Releases GitHub après validation : tag correspondant à la version de `package.json`, Cargo et Tauri, installateurs EXE/MSI du même code et fichier `SHA256SUMS.txt`. La version 2.0.1 porte uniquement sur la présentation, l’organisation du frontend et le rapport HTML imprimable. Les installateurs restent non signés. La publication d’une release ne met pas automatiquement à jour les postes installés.
+Une distribution publique peut être publiée manuellement dans les Releases GitHub après validation : tag correspondant à la version de `package.json`, Cargo et Tauri, installateur EXE du même code et fichier `SHA256SUMS.txt`. La version 2.0.1 porte uniquement sur la présentation, l’organisation du frontend et le rapport HTML imprimable. Les installateurs restent non signés. La publication d’une release ne met pas automatiquement à jour les postes installés.
 
 ## Signature Authenticode
 
