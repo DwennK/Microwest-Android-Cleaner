@@ -458,17 +458,19 @@ export function ApplicationsPage({
                       >
                         {r.risk.category === "conflicting_evidence"
                           ? "Désaccord local / IA"
-                          : r.risk.category === "unwanted_utility"
-                            ? "Profil indésirable"
-                            : r.risk.category === "combined_signals"
-                              ? "Indices concordants"
-                              : r.risk.category === "ai_unwanted_suspect"
-                                ? "Avis IA étayé"
-                                : r.risk.category === "ai_keep"
-                                  ? "Suspicion corrigée par IA"
-                                  : r.risk.recommended_action === "keep"
-                                    ? "Aucun indice notable"
-                                    : "Examen des indices"}
+                          : r.risk.category === "workshop_report"
+                            ? "Signalement atelier"
+                            : r.risk.category === "unwanted_utility"
+                              ? "Profil indésirable"
+                              : r.risk.category === "combined_signals"
+                                ? "Indices concordants"
+                                : r.risk.category === "ai_unwanted_suspect"
+                                  ? "Avis IA étayé"
+                                  : r.risk.category === "ai_keep"
+                                    ? "Suspicion corrigée par IA"
+                                    : r.risk.recommended_action === "keep"
+                                      ? "Aucun retrait justifié par le scan"
+                                      : "Examen des indices"}
                       </div>
                     </td>
                     <td className="text-xs text-muted-foreground">

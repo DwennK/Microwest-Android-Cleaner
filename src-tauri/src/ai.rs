@@ -128,10 +128,11 @@ pub fn apply(row: &mut Row, result: AiResult, rep: &Reputation) -> bool {
         || row.local_risk.recommended_action == "do_not_touch"
         || rep.whitelisted
         || rep.blacklisted
+        || crate::risk::workshop_report(&row.app.package_name).is_some()
         || row.validation != "unreviewed"
     {
         row.ai_text
-            .push_str(" Décision humaine, réputation explicite ou protection système conservée.");
+            .push_str(" Décision humaine, signalement atelier, réputation explicite ou protection système conservée.");
         return false;
     }
     if !grounded || !confident {
@@ -392,6 +393,36 @@ mod tests {
         assert_eq!(row.risk.recommended_action, "review");
         assert!(row.risk.score < 60);
     }
+    #[test]
+    fn workshop_report_cannot_be_dismissed_by_an_ai_store_opinion() {
+        let app = AppInfo {
+            package_name: "com.yaohuo.xingyu".into(),
+            installer: "com.android.vending".into(),
+            has_launcher_entry: Some(true),
+            ..Default::default()
+        };
+        let local = risk::evaluate(&app, &Reputation::default());
+        let mut row = Row {
+            app,
+            risk: local.clone(),
+            local_risk: local,
+            ai: None,
+            ai_text: String::new(),
+            note: String::new(),
+            validation: "unreviewed".into(),
+        };
+        let opinion = AiResult {
+            recommended_action: "keep".into(),
+            confidence: "high".into(),
+            counter_evidence_ids: vec!["source:store".into(), "launcher:visible".into()],
+            ..Default::default()
+        };
+        assert!(!apply(&mut row, opinion, &Reputation::default()));
+        assert_eq!(row.risk.recommended_action, "suggest_uninstall");
+        assert_eq!(row.risk.score, 75);
+        assert!(row.ai_text.contains("signalement atelier"));
+    }
+
     #[test]
     fn untrusted_json_is_normalized() {
         let r=parse("```json\n{\"apps\":[{\"package_name\":\"com.test.app\",\"risk_score\":900,\"recommended_action\":\"delete\",\"confidence\":\"certain\"}]}\n```").unwrap();

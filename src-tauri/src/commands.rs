@@ -222,13 +222,17 @@ pub async fn start_scan(
 ) -> Result<Scan> {
     let (_permit, cancel) = state.begin()?;
     let adb = state.adb(cancel)?;
+    let previous = state
+        .current()
+        .ok()
+        .filter(|s| !s.demo && s.device.serial == serial);
     *state.scan.lock().map_err(|e| e.to_string())? = None;
     let (_, device) = adb.detect(&serial).await?;
     if device.state != "device" {
         return Err(device.message);
     }
     let tool = state.tool("aapt2");
-    let scan = crate::workflow::scan_device(
+    let mut scan = crate::workflow::scan_device(
         &adb,
         device,
         include_system,
@@ -238,6 +242,17 @@ pub async fn start_scan(
         |n, total, message| progress(&app, "scan", n, total, message),
     )
     .await?;
+    if let Some(previous) = previous {
+        scan.interventions = previous.interventions;
+        scan.dns_backup = previous.dns_backup;
+        scan.uninstalled = previous.uninstalled;
+    } else if let Some(id) = scan.comparison.as_ref().and_then(|c| c.previous_scan_id) {
+        // Recover a pending DNS restoration after a restart, only from the same device.
+        scan.dns_backup = state.db()?.load(id)?.dns_backup;
+    }
+    if !scan.cancelled {
+        state.db()?.persist_analysis(&scan)?;
+    }
     state.log(&format!(
         "scan terminé : {} apps ; incomplet={}",
         scan.rows.len(),
@@ -529,6 +544,102 @@ pub async fn uninstall_selected(
 #[tauri::command]
 pub async fn history(state: State<'_, Engine>) -> Result<Vec<Value>> {
     state.db()?.history()
+}
+
+#[tauri::command]
+pub async fn tweaks_status(
+    state: State<'_, Engine>,
+    serial: String,
+    scan_id: i64,
+) -> Result<crate::tweaks::Status> {
+    let (_permit, cancel) = state.begin()?;
+    crate::tweaks::validate_scan(&state.current()?, &serial, scan_id)?;
+    crate::tweaks::status(&state.adb(cancel)?, &serial).await
+}
+
+#[tauri::command]
+pub async fn apply_tweak(
+    app: tauri::AppHandle,
+    state: State<'_, Engine>,
+    serial: String,
+    scan_id: i64,
+    action: crate::tweaks::Action,
+    note: String,
+) -> Result<Value> {
+    use crate::tweaks;
+    let (_permit, cancel) = state.begin()?;
+    let mut scan = state.current()?;
+    tweaks::validate_scan(&scan, &serial, scan_id)?;
+    let adb = state.adb(cancel.clone())?;
+    tweaks::require_owner(&adb, &serial).await?;
+    let manual = if action.manual() {
+        Some(tweaks::manual_detail(action, &note)?)
+    } else {
+        None
+    };
+    if action.changes_device() {
+        let (send, recv) = tokio::sync::oneshot::channel();
+        app.dialog()
+            .message(format!("Téléphone : {} — {}\n\n{} ?\n\nCette action modifie les réglages du téléphone. Le résultat sera relu et inscrit au journal d’intervention.", scan.device.model, serial, action.label()))
+            .title("Microwest · Tweaks")
+            .kind(MessageDialogKind::Warning)
+            .buttons(MessageDialogButtons::OkCancelCustom("Appliquer".into(), "Annuler".into()))
+            .show(move |yes| { let _ = send.send(yes); });
+        if !recv.await.map_err(|_| "Confirmation interrompue")? || cancel.is_cancelled() {
+            return Ok(json!({"scan":scan,"error":null,"message":"Action annulée."}));
+        }
+    }
+    tweaks::require_owner(&adb, &serial).await?;
+    if matches!(action, tweaks::Action::DnsAdguard) && scan.dns_backup.is_none() {
+        scan.dns_backup = Some(tweaks::read_dns(&adb, &serial).await?);
+    }
+    if matches!(action, tweaks::Action::DnsRestore) && scan.dns_backup.is_none() {
+        return Err("Aucun réglage DNS précédent à restaurer.".into());
+    }
+    scan.interventions.push(Intervention {
+        date: chrono::Utc::now().to_rfc3339(),
+        action: action.label().into(),
+        status: "pending".into(),
+        detail: "Intervention commencée ; résultat non confirmé. Vérifier le téléphone si l’application a été interrompue.".into(),
+    });
+    // Durably record intent and DNS backup before issuing any mutation.
+    state.db()?.persist_analysis(&scan)?;
+    state.store(scan.clone())?;
+    let result = match manual {
+        Some(detail) => Ok(detail),
+        None => tweaks::execute(&adb, &serial, action, scan.dns_backup.as_ref()).await,
+    };
+    let entry = scan.interventions.last_mut().unwrap();
+    let error = match result {
+        Ok(detail) => {
+            entry.status = if action.manual() {
+                "manual"
+            } else if action.changes_device() {
+                "verified"
+            } else {
+                "opened"
+            }
+            .into();
+            entry.detail = detail;
+            if matches!(action, tweaks::Action::DnsRestore) {
+                scan.dns_backup = None;
+            }
+            None
+        }
+        Err(e) => {
+            entry.status = "failed".into();
+            entry.detail = format!("{e}\nRésultat non confirmé ; une modification partielle est possible. Actualisez l’état avant de poursuivre.");
+            Some(e)
+        }
+    };
+    // Keep the actual outcome in memory even if the disk becomes unavailable.
+    state.store(scan.clone())?;
+    if let Err(e) = state.db().and_then(|mut db| db.persist_analysis(&scan)) {
+        return Ok(
+            json!({"scan":scan,"error":format!("Résultat obtenu mais journal non enregistré : {e}"),"message":""}),
+        );
+    }
+    Ok(json!({"scan":scan,"error":error,"message":"Intervention inscrite au journal."}))
 }
 #[tauri::command]
 pub async fn load_history(state: State<'_, Engine>, id: i64) -> Result<Scan> {

@@ -35,6 +35,8 @@ ul { margin: 8px 0; padding-left: 22px; }
 li { margin: 4px 0; }
 .technician { border-left: 3px solid #cbd5df; padding: 0 14px; margin-top: 16px; }
 .note { white-space: pre-wrap; }
+.intervention { border-left: 3px solid #087f79; padding: 4px 16px; margin: 12px 0; break-inside: avoid; }
+.intervention p { white-space: pre-wrap; }
 .report-footer { border-top: 1px solid #dce4ec; padding-top: 16px; margin-top: 32px; font-size: 12px; color: #536579; }
 @media (max-width: 640px) {
   body { padding: 12px; }

@@ -10,6 +10,7 @@ pub mod process;
 pub mod reports;
 pub mod risk;
 pub mod scanner;
+pub mod tweaks;
 pub mod updates;
 pub mod workflow;
 use tauri::Manager;
@@ -50,7 +51,9 @@ pub fn run() {
             commands::open_folder,
             commands::open_report,
             commands::demo_scan,
-            commands::import_legacy
+            commands::import_legacy,
+            commands::tweaks_status,
+            commands::apply_tweak
         ])
         .run(tauri::generate_context!())
         .expect("Application Tauri");

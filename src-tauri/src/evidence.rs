@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, io::Read, path::Path};
 use tokio_util::sync::CancellationToken;
 
-pub const RULES_VERSION: u32 = 3;
+pub const RULES_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -376,6 +376,7 @@ pub fn supports_removal(a: &AppInfo, ids: &[String]) -> bool {
     let has = |id: &str| ids.iter().any(|s| s == id);
     let profile = risk::profile(a);
     if (has("profile:cleaner") && profile.families.iter().any(|s| s == "cleaner"))
+        || (has("profile:workshop_report") && risk::workshop_report(&a.package_name).is_some())
         || (has("profile:disguised_home") && a.is_default_home == Some(true))
     {
         return true;
@@ -473,7 +474,7 @@ mod tests {
         a.apk_analysis.warning_strings = inspect_resources("Storage full");
         assert_eq!(
             risk::evaluate(&a, &Default::default()).recommended_action,
-            "keep"
+            "review"
         );
         a.apk_analysis.warning_strings = inspect_resources("Your phone is infected! Clean now!");
         assert!(a.active_capabilities.is_empty());

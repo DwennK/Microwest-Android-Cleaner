@@ -4,6 +4,7 @@ import {
   Settings2,
   Smartphone,
   Table2,
+  SlidersHorizontal,
 } from "lucide-react";
 import { version } from "../package.json";
 import { type Filters } from "./lib/triage";
@@ -13,6 +14,7 @@ export const navigation = [
   { id: "connection", label: "Connexion", icon: Smartphone },
   { id: "scan", label: "Analyse du téléphone", icon: ScanLine },
   { id: "results", label: "Applications", icon: Table2 },
+  { id: "tweaks", label: "Tweaks", icon: SlidersHorizontal },
   { id: "exports", label: "Rapports & historique", icon: FileText },
   { id: "settings", label: "Paramètres", icon: Settings2 },
 ] as const;

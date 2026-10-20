@@ -1,4 +1,4 @@
-# Analyse atelier — règles version 3
+# Analyse atelier — règles version 4
 
 Le score exprime une priorité de vérification, pas une probabilité d’infection.
 Les décisions finales, locales et IA sont conservées séparément.
@@ -17,6 +17,24 @@ un retrait. Un utilitaire combinant publicité et plusieurs familles alarmistes
 peut être proposé au retrait, y compris sans overlay/accessibilité. Les textes
 présents ne sont jamais présentés comme des comportements observés. Les cleaners
 tiers relèvent d’une politique de nettoyage explicite, pas d’un diagnostic viral.
+
+Un utilitaire PDF/QR/galerie/contacts contenant un SDK publicitaire passe à
+**35/100, À vérifier**, même sans accès spécial ni texte alarmiste. Cela demande
+de vérifier la gêne publicitaire avec le client ; un SDK ne prouve pas un abus.
+Le nom « PDF » seul ne déclenche toujours pas d’alerte.
+
+Les cinq packages signalés par l’atelier le 20 octobre 2026 passent à
+**75/100, Retrait proposé**, avec le motif « Signalement atelier » :
+`com.xstudios.cleanx`, `com.pdfreader.pdfviewer.pdfapp`, `com.yaohuo.xingyu`,
+`pdf.pdfreader.pdfviewer.reader.officelens` et `pdf.pdfreader.viewer.editor.free`.
+La correspondance est exacte et fonctionne sans libellé APK. Ces signalements
+ne constituent pas une réputation externe vérifiée ni un verdict de malware.
+CleanX est également reconnu comme nom de cleaner.
+
+Les protections système et la liste blanche explicite restent prioritaires ;
+une collecte Android incomplète ramène la proposition à une vérification.
+Un avis IA ne neutralise pas un signalement atelier. Le technicien peut conserver
+une application explicitement et toute désinstallation exige sa confirmation.
 
 ## Signatures
 

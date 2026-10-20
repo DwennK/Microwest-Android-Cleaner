@@ -100,6 +100,10 @@ pub struct UninstallResult {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scan {
+    #[serde(default)]
+    pub interventions: Vec<Intervention>,
+    #[serde(default)]
+    pub dns_backup: Option<DnsSettings>,
     pub rules_version: u32,
     pub analysis_notice: String,
     pub device: Device,
@@ -111,6 +115,18 @@ pub struct Scan {
     pub scan_id: Option<i64>,
     pub comparison: Option<Comparison>,
     pub uninstalled: Vec<UninstallResult>,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DnsSettings {
+    pub mode: Option<String>,
+    pub hostname: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Intervention {
+    pub date: String,
+    pub action: String,
+    pub status: String,
+    pub detail: String,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct Progress {

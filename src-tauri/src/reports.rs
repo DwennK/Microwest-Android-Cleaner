@@ -107,6 +107,19 @@ pub fn plan(scan: &Scan, selected: &[String]) -> String {
                 .join("; ")
         ));
     }
+    s.push_str("\nJournal d’intervention · Tweaks\n");
+    if scan.interventions.is_empty() {
+        s.push_str("Aucune intervention enregistrée.\n");
+    }
+    for entry in &scan.interventions {
+        s.push_str(&format!(
+            "- {} · {} · {}\n  {}\n",
+            entry.date,
+            intervention_status(&entry.status),
+            entry.action,
+            entry.detail
+        ));
+    }
     s.push_str("\nRappel sécurité\nNe pas désinstaller sans validation humaine. Aucune suppression automatique. Vérifier le téléphone si ADB devient unauthorized/offline.\n");
     s
 }
@@ -329,6 +342,16 @@ fn html_application(row: &Row) -> String {
     s.push_str(&format!("</dl><div class=\"technician\"><h3>Validation technicien : {}</h3><p class=\"note\">{}</p></div></div></article>", escape(validation_label(&row.validation)), if row.note.trim().is_empty() { "Aucune note.".into() } else { escape(&row.note) }));
     s
 }
+pub fn intervention_status(status: &str) -> &str {
+    match status {
+        "verified" => "Vérifié par l’application",
+        "manual" => "Confirmé par le technicien",
+        "opened" => "Écran ouvert · réalisation à confirmer",
+        "failed" => "Échec / résultat non confirmé",
+        _ => "Interrompu ou en cours · résultat non confirmé",
+    }
+}
+
 pub fn html(scan: &Scan) -> String {
     let mut s = format!(
         "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\"><title>Rapport Microwest Android Cleaner</title><style>{}</style></head><body><main><header class=\"report-header\"><p class=\"brand\">Microwest</p><p class=\"eyebrow\">Shopy Phone Sàrl · Android Cleaner</p><h1>Rapport de diagnostic Android</h1><dl class=\"identity\"><div><dt>Date d’édition</dt><dd>{}</dd></div><div><dt>Téléphone</dt><dd>{} {}</dd></div><div><dt>Version Android</dt><dd>{}</dd></div><div><dt>Numéro ADB</dt><dd>{}</dd></div><div><dt>Applications analysées</dt><dd>{}</dd></div></dl></header><p class=\"notice\">Ce rapport est une aide au diagnostic, pas une certification d’infection. Seules les métadonnées des applications sont analysées. Aucune donnée personnelle du client n’est lue.</p>",
@@ -388,6 +411,19 @@ pub fn html(scan: &Scan) -> String {
                 ));
             }
         }
+    }
+    s.push_str("<h2>Journal d’intervention · Tweaks</h2>");
+    if scan.interventions.is_empty() {
+        s.push_str("<p>Aucune intervention enregistrée.</p>");
+    }
+    for entry in &scan.interventions {
+        s.push_str(&format!(
+            "<section class=\"intervention\"><h3>{}</h3><p>{} · {}</p><p>{}</p></section>",
+            escape(&entry.action),
+            escape(&entry.date),
+            escape(intervention_status(&entry.status)),
+            escape(&entry.detail)
+        ));
     }
     s.push_str("<h2>Résultats du scan</h2><p class=\"muted\">Les champs sans information collectée ne sont pas affichés.</p>");
     if scan.rows.is_empty() {

@@ -47,6 +47,23 @@ pub fn generic_label(s: &str) -> bool {
     .contains(&s.trim().to_lowercase().as_str())
 }
 
+// Exact package reports supplied by the workshop on 2026-10-20.
+// These are unwanted-app reports, not independently verified malware verdicts.
+pub fn workshop_report(package: &str) -> Option<&'static str> {
+    match package {
+        "com.xstudios.cleanx" => {
+            Some("Package CleanX signalé par l'atelier comme faux cleaner indésirable.")
+        }
+        "com.pdfreader.pdfviewer.pdfapp"
+        | "com.yaohuo.xingyu"
+        | "pdf.pdfreader.pdfviewer.reader.officelens"
+        | "pdf.pdfreader.viewer.editor.free" => {
+            Some("Package de lecteur PDF signalé par l'atelier pour des publicités envahissantes.")
+        }
+        _ => None,
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Profile {
     pub score_floor: i32,
@@ -77,6 +94,13 @@ fn normalized_words(s: &str) -> HashSet<String> {
 }
 pub fn profile(a: &AppInfo) -> Profile {
     let mut p = Profile::default();
+    if let Some(report) = workshop_report(&a.package_name) {
+        p.add(
+            "workshop_report",
+            75,
+            &format!("{report} Retrait proposé selon ce signalement ; comportement non observé par ce scan, pas un verdict de malware."),
+        );
+    }
     let w = normalized_words(&format!("{} {}", a.display_name(), a.package_name));
     let l = if a.app_label_source == "apk" {
         normalized_words(&a.app_label)
@@ -104,6 +128,7 @@ pub fn profile(a: &AppInfo) -> Profile {
         "ccleaner",
         "phonecleaner",
         "junkcleaner",
+        "cleanx",
     ]) || [
         ["cpu", "cooler"],
         ["battery", "saver"],
@@ -113,6 +138,7 @@ pub fn profile(a: &AppInfo) -> Profile {
     ]
     .iter()
     .any(|pair| pair.iter().all(|s| w.contains(*s)))
+        || a.display_name().trim().eq_ignore_ascii_case("cleanx")
         || has(&["clean", "cleaning", "boost", "cooler"])
             && has(&[
                 "phone", "ram", "memory", "junk", "cache", "battery", "storage",
@@ -149,6 +175,13 @@ pub fn profile(a: &AppInfo) -> Profile {
             0,
             "Rôle PDF/QR/galerie/contacts : cette fonction seule ne constitue pas un risque.",
         );
+        if !a.apk_analysis.ad_libraries.is_empty() {
+            p.add(
+                "ad_supported_utility",
+                35,
+                "Utilitaire avec bibliothèque publicitaire : vérifier la fréquence des annonces et la gêne avec le client. La présence du SDK ne prouve pas une publicité intrusive.",
+            );
+        }
         if has(&[
             "all", "super", "ultra", "max", "ultimate", "boost", "cleaner",
         ]) {
@@ -339,7 +372,9 @@ pub fn evaluate(a: &AppInfo, rep: &Reputation) -> Risk {
         reasons.push("Collecte incomplète : vérifier les métadonnées avant toute décision.".into());
     }
     score = score.clamp(0, 100);
-    let (category, action) = if score >= 60 && p.score_floor >= 60 {
+    let (category, action) = if score >= 60 && workshop_report(&a.package_name).is_some() {
+        ("workshop_report", "suggest_uninstall")
+    } else if score >= 60 && p.score_floor >= 60 {
         ("unwanted_utility", "suggest_uninstall")
     } else if score >= 60 && corroborated {
         ("combined_signals", "suggest_uninstall")
@@ -508,6 +543,97 @@ mod tests {
         let risk = evaluate(&a, &Reputation::default());
         assert_eq!(risk.recommended_action, "suggest_uninstall");
         assert!(risk.reasons.iter().any(|r| r.contains("politique")));
+    }
+
+    #[test]
+    fn workshop_reports_match_all_five_packages_even_without_apk_metadata() {
+        for (package, label) in [
+            ("com.xstudios.cleanx", "CleanX"),
+            ("com.pdfreader.pdfviewer.pdfapp", "PDF Reader - PDF Viewer"),
+            ("com.yaohuo.xingyu", "PDF Reader"),
+            ("pdf.pdfreader.pdfviewer.reader.officelens", "Lecteur PDF"),
+            ("pdf.pdfreader.viewer.editor.free", "Lecteur PDF"),
+        ] {
+            let mut a = ordinary();
+            a.package_name = package.into();
+            a.app_label = label.into();
+            for source in ["apk", "package"] {
+                a.app_label_source = source.into();
+                if source == "package" {
+                    a.app_label.clear();
+                }
+                let risk = evaluate(&a, &Reputation::default());
+                assert_eq!(risk.score, 75, "{package}");
+                assert_eq!(risk.recommended_action, "suggest_uninstall", "{package}");
+                assert_eq!(risk.category, "workshop_report");
+                assert!(risk
+                    .reasons
+                    .iter()
+                    .any(|r| r.contains("signalé par l'atelier")));
+                assert!(crate::evidence::facts(&a).contains_key("profile:workshop_report"));
+            }
+            a.dumpsys_error = "Incomplete collection".into();
+            assert_eq!(
+                evaluate(&a, &Reputation::default()).recommended_action,
+                "review"
+            );
+            a.dumpsys_error.clear();
+            let rep = Reputation {
+                whitelisted: true,
+                ..Default::default()
+            };
+            assert_eq!(evaluate(&a, &rep).recommended_action, "keep");
+            a.is_system_app = true;
+            assert_eq!(
+                evaluate(&a, &Reputation::default()).recommended_action,
+                "do_not_touch"
+            );
+            assert!(workshop_report(&format!("{package}.other")).is_none());
+        }
+    }
+
+    #[test]
+    fn cleanx_label_is_a_cleaner_but_generic_clean_is_not() {
+        let mut a = ordinary();
+        for label in ["CleanX", "cleanx", "CLEANX"] {
+            a.app_label = label.into();
+            assert!(profile(&a).families.iter().any(|f| f == "cleaner"));
+            assert_eq!(
+                evaluate(&a, &Reputation::default()).recommended_action,
+                "suggest_uninstall"
+            );
+        }
+        a.app_label = "Clean Architecture Reader".into();
+        assert_eq!(
+            evaluate(&a, &Reputation::default()).recommended_action,
+            "keep"
+        );
+    }
+
+    #[test]
+    fn advertising_utilities_need_review_without_special_access_or_scare_text() {
+        let mut a = ordinary();
+        for label in ["PDF Reader", "Lecteur PDF", "QR Reader", "Gallery"] {
+            a.app_label = label.into();
+            a.apk_analysis.ad_libraries.clear();
+            assert_eq!(
+                evaluate(&a, &Reputation::default()).recommended_action,
+                "keep"
+            );
+            a.apk_analysis.ad_libraries = vec!["Google Mobile Ads".into()];
+            let risk = evaluate(&a, &Reputation::default());
+            assert_eq!(risk.recommended_action, "review", "{label}");
+            assert_eq!(risk.score, 35);
+            assert!(!crate::evidence::supports_removal(
+                &a,
+                &["profile:utility".into(), "ads:Google Mobile Ads".into()],
+            ));
+        }
+        a.app_label = "Daily Companion".into();
+        assert_eq!(
+            evaluate(&a, &Reputation::default()).recommended_action,
+            "keep"
+        );
     }
 
     #[test]

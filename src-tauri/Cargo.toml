@@ -13,6 +13,11 @@ name = "process-fixture"
 path = "tests/support/process-fixture.rs"
 required-features = ["test-support"]
 
+[[bin]]
+name = "tweaks-fixture"
+path = "tests/support/tweaks-fixture.rs"
+required-features = ["test-support"]
+
 [lib]
 name = "microwest_cleaner"
 crate-type = ["rlib"]

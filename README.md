@@ -44,7 +44,18 @@ Les tests Rust comprennent 600 comparaisons générées et 49 évaluations issue
 3. **Applications** : filtrer par nom/package/note, action, visibilité, installateur, permission ou score. Ouvrir une fiche pour voir les raisons, accès déclarés/accordés/actifs, rôles HOME, notes et validation technicien.
 4. **Analyse IA**, facultative : confirmer l'envoi des métadonnées au fournisseur configuré. L'IA ne reçoit ni numéro ADB ni notes ; ses résultats respectent les protections locales et les décisions humaines.
 5. **Désinstaller la sélection** : confirmer la liste et le téléphone dans la boîte native. Les résultats et décisions sont conservés dans SQLite ; rescanner après intervention.
-6. **Rapports & historique** : export HTML imprimable, CSV et plan d'action texte, comparaison au scan précédent du même téléphone, consultation des 100 derniers scans.
+6. **Tweaks** : DNS privé AdGuard avec restauration, activation de Samsung Browser, désactivation/réactivation de Chrome et retour à One UI Home. Les étapes Adblock, navigateur par défaut et mises à jour Play Store sont guidées sur le téléphone.
+7. **Rapports & historique** : export HTML imprimable, CSV et plan d'action texte, comparaison au scan précédent du même téléphone, consultation des 100 derniers scans. Le rapport HTML et le plan incluent le journal d’intervention des Tweaks ; le CSV reste un inventaire d’applications.
+
+### Tweaks et journal d’intervention
+
+Un scan réel complet du même téléphone et le profil Android principal (utilisateur 0) sont requis. Chaque modification directe demande une confirmation native et relit le résultat. Chrome ne peut être désactivé par ce parcours que si Samsung Browser est actif et identifié comme navigateur par défaut. One UI Home doit être disponible comme accueil. Le DNS privé nécessite Android 9+ ; sa configuration relue ne constitue pas un test de connectivité ou de filtrage.
+
+Les actions sont limitées à une liste fixe côté Rust. Les Tweaks ajoutent des commandes ciblées de réglage DNS, d’activation/désactivation de navigateur, de sélection de l’accueil et d’ouverture d’écrans Android ; ils n’exposent aucune console shell générale. Les protections contre la désinstallation d’applications système restent appliquées.
+
+La sauvegarde DNS et une entrée de journal « résultat non confirmé » sont enregistrées avant toute modification. Le résultat est ensuite conservé comme vérifié, confirmé manuellement, écran ouvert ou échec. Une interruption peut laisser un changement partiel : actualiser l’état et utiliser la restauration DNS si nécessaire. La sauvegarde conserve aussi l’absence de réglage personnalisé. Elle est récupérée depuis le dernier scan du même téléphone après redémarrage ; le journal et les suppressions sont conservés lors d’un nouveau scan du même téléphone dans la session. Les anciens journaux restent consultables dans l’historique.
+
+Installer un bloqueur ne l’active pas dans Samsung Browser. Le technicien termine l’installation et l’activation sur le téléphone, puis indique le nom du bloqueur. Les mises à jour se font dans le Play Store ; leur nombre est déclaré par le technicien. L’application ne présente jamais une simple ouverture d’écran comme une intervention terminée.
 
 ADB est recherché dans les ressources embarquées, le dossier de données, `ADB_PATH`, les SDK `ANDROID_HOME`/`ANDROID_SDK_ROOT`, le PATH et les emplacements usuels. aapt2 est recherché dans `tools`, `adb`, `AAPT2_PATH`, le PATH et les dossiers SDK `build-tools`. Sans aapt2, les libellés sont dérivés du package ; l'absence d'une icône raster est explicitement indiquée. Les icônes adaptatives XML ne sont pas rasterisées.
 
@@ -67,7 +78,7 @@ Les réglages `ai_provider`, `openai_model`, `openai_base_url`, `minimax_model`,
 
 ## Architecture et référence Python
 
-`src/App.tsx` compose la navigation et les cinq écrans de `src/pages/`. `src/hooks/useAppController.ts` conserve l’état et les actions partagés entre les écrans ; `useOperation.ts` centralise le verrouillage immédiat, les messages, la progression et l’annulation des opérations. Les composants communs et la fiche d’application sont dans `src/components/`. Les espacements, couleurs et styles de contrôle communs sont dans `src/styles.css`.
+`src/App.tsx` compose la navigation et les six écrans de `src/pages/`. `src/hooks/useAppController.ts` conserve l’état et les actions partagés entre les écrans ; `useOperation.ts` centralise le verrouillage immédiat, les messages, la progression et l’annulation des opérations. Les composants communs et la fiche d’application sont dans `src/components/`. Les espacements, couleurs et styles de contrôle communs sont dans `src/styles.css`.
 
 `src-tauri/src/` sépare modèle, ADB/processus, métadonnées APK, règles, workflow, SQLite, IA, rapports et commandes Tauri. Le rapport HTML embarque `report.css` et reste autonome, avec des fiches détaillées par application et une mise en page A4 à l’impression. Les opérations longues sont asynchrones et la progression utilise `operation-progress`. Une exclusion mutuelle empêche deux scans, modifications ou suppressions simultanés. Aucune commande shell générale, permission filesystem frontend ou accès réseau frontend n'est exposé.
 

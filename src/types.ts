@@ -99,6 +99,8 @@ export interface Comparison {
   }[];
 }
 export interface Scan {
+  interventions?: Intervention[];
+  dns_backup?: DnsSettings | null;
   rules_version?: number;
   analysis_notice?: string;
   device: Device;
@@ -115,6 +117,25 @@ export interface Scan {
     result: string;
     success: boolean;
   }[];
+}
+export interface DnsSettings {
+  mode: string | null;
+  hostname: string | null;
+}
+export interface Intervention {
+  date: string;
+  action: string;
+  status: "pending" | "verified" | "manual" | "opened" | "failed";
+  detail: string;
+}
+export interface TweakStatus {
+  dns: DnsSettings | null;
+  chrome: boolean | null;
+  samsung: boolean | null;
+  default_browser: string | null;
+  home: string | null;
+  one_ui_available: boolean;
+  warnings: string[];
 }
 export interface Settings {
   ai_provider: "openai" | "minimax";

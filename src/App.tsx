@@ -20,6 +20,7 @@ import { ConnectionPage } from "./pages/ConnectionPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { ScanPage } from "./pages/ScanPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { TweaksPage } from "./pages/TweaksPage";
 import type { Scan } from "./types";
 export default function App() {
   const app = useAppController();
@@ -130,9 +131,11 @@ export default function App() {
                     ? "02 · Analyser"
                     : page === "results"
                       ? "03 · Examiner"
-                      : page === "exports"
-                        ? "04 · Restituer"
-                        : "Configuration de l’atelier"}
+                      : page === "tweaks"
+                        ? "04 · Ajuster"
+                        : page === "exports"
+                          ? "05 · Restituer"
+                          : "Configuration de l’atelier"}
               </div>
               <h1 className="text-[28px] font-semibold tracking-tight">
                 {navigation.find((n) => n.id === page)?.label}
@@ -144,9 +147,11 @@ export default function App() {
                     ? "Un diagnostic local des applications, sans accès aux données personnelles."
                     : page === "results"
                       ? "Examinez les signaux, validez les applications et décidez des actions."
-                      : page === "exports"
-                        ? "Un compte rendu clair pour le client et un historique pour l’atelier."
-                        : "Outils locaux, analyse IA optionnelle et données de l’application."}
+                      : page === "tweaks"
+                        ? "Réglez le téléphone et consignez chaque intervention dans le rapport client."
+                        : page === "exports"
+                          ? "Un compte rendu clair pour le client et un historique pour l’atelier."
+                          : "Outils locaux, analyse IA optionnelle et données de l’application."}
               </p>
             </div>
             {["results", "exports"].includes(page) && (
@@ -246,6 +251,8 @@ export default function App() {
           {page === "scan" && <ScanPage {...app} />}
 
           {page === "results" && <ApplicationsPage {...app} />}
+
+          {page === "tweaks" && <TweaksPage {...app} />}
 
           {page === "exports" && <ReportsPage {...app} />}
 

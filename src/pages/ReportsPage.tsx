@@ -10,6 +10,7 @@ import {
   Table2,
 } from "lucide-react";
 import { Badge, Empty } from "../components/app-primitives";
+import { InterventionJournal } from "../components/InterventionJournal";
 import { Button } from "../components/ui/button";
 import type { AppController } from "../hooks/useAppController";
 import { actionLabels } from "../lib/triage";
@@ -49,7 +50,7 @@ export function ReportsPage({
             kind: "html",
             name: "Rapport client",
             description:
-              "Rapport HTML imprimable : diagnostic, décisions, comparaison et suppressions.",
+              "Rapport HTML imprimable : diagnostic, décisions, suppressions et journal d’intervention.",
             icon: FileText,
           },
           {
@@ -173,6 +174,9 @@ export function ReportsPage({
           )}
         </section>
       )}
+      <div className="mb-3">
+        <InterventionJournal entries={scan?.interventions} />
+      </div>
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between border-b p-3">
           <h2 className="section-title">Historique local</h2>
