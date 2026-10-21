@@ -63,6 +63,8 @@ jobs:
         run: |
           '{"bundle":{"createUpdaterArtifacts":false}}' | Set-Content -Encoding utf8 updater-disabled.json
           npm run tauri -- build --config updater-disabled.json -- --locked
+      - name: Verify installer releases bundled ADB locks
+        run: python -u scripts/check-installer-locks.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: microwest-windows-x64

@@ -37,3 +37,11 @@ L’application vérifie `https://github.com/DwennK/Microwest-Android-Cleaner/re
 La clé de signature initiale est sauvegardée dans `%USERPROFILE%/.tauri/microwest-android-cleaner.key` sur le poste de préparation et dans le secret GitHub `TAURI_SIGNING_PRIVATE_KEY`. Conserver cette sauvegarde hors du dépôt : perdre ou remplacer la clé empêche les versions déjà installées d’accepter de futures mises à jour. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` est facultatif, seulement si la clé est protégée par un mot de passe.
 
 Pour publier : mettre à jour les versions package.json/package-lock.json/Cargo.toml/Cargo.lock/tauri.conf.json, puis pousser le tag correspondant. La publication ne démarre qu’après les tests et la vérification des signatures. Les anciennes versions sans updater nécessitent une installation manuelle initiale.
+
+### Fichiers ADB verrouillés (2.1.1)
+
+Le serveur ADB peut rester actif après la fermeture de l’application et verrouiller `AdbWinApi.dll` et `AdbWinUsbApi.dll`. Les hooks NSIS ferment d’abord l’application, puis utilisent le gestionnaire de redémarrage Windows pour arrêter les processus qui utilisent les chemins exacts des ressources ADB de cette installation. Un serveur ADB installé ailleurs reste actif. Les DLL sont aussi contrôlées lorsque l’exécutable ADB a déjà été retiré par une ancienne désinstallation interrompue.
+
+Ces hooks s’exécutent avant la copie des fichiers et avant leur désinstallation. Le mode interactif demande la fermeture des processus concernés ; le mode de mise à jour passive effectue cette fermeture automatiquement. Windows peut prendre quelques dizaines de secondes pour arrêter un serveur ADB. Aucun redémarrage du PC n’est normalement nécessaire.
+
+Après un build Windows, `python -u scripts/check-installer-locks.py` compile un petit installateur avec les hooks livrés et les helpers Tauri générés. Il teste une installation neuve, une réinstallation sans ADB, une mise à jour et une désinstallation avec ADB actif, ainsi qu’une DLL verrouillée sans `adb.exe`. Les tests utilisent des dossiers temporaires et des ports ADB dédiés, et vérifient qu’un serveur provenant d’un autre dossier reste actif. Ce contrôle bloque la publication en cas d’échec.
