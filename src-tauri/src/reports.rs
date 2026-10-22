@@ -247,6 +247,49 @@ fn html_field(title: &str, value: &str) -> String {
         }
     )
 }
+fn excerpt(value: &str, limit: usize) -> String {
+    let mut chars = value.chars();
+    let mut text: String = chars.by_ref().take(limit).collect();
+    if chars.next().is_some() {
+        text.push('…');
+    }
+    text
+}
+
+fn html_inventory(scan: &Scan) -> String {
+    if scan.rows.is_empty() {
+        return "<p>Aucune application dans ce scan.</p>".into();
+    }
+    let mut s = String::from("<table class=\"inventory\"><caption>Inventaire complet · motifs abrégés, détails techniques consultables dans le HTML.</caption><thead><tr><th scope=\"col\">Application</th><th scope=\"col\">Analyse</th><th scope=\"col\">Motif principal</th><th scope=\"col\">Validation / note</th></tr></thead><tbody>");
+    for row in &scan.rows {
+        let reason = if matches!(
+            row.risk.recommended_action.as_str(),
+            "review" | "suggest_uninstall"
+        ) {
+            row.risk
+                .reasons
+                .iter()
+                .find(|reason| !reason.starts_with("Installée via "))
+                .map(|reason| excerpt(reason, 180))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        s.push_str(&format!(
+            "<tr><td><strong>{}</strong><div class=\"package\">{}</div></td><td><strong>{}</strong><br>{}/100</td><td>{}</td><td>{}",
+            escape(&row.app.display_name()), escape(&row.app.package_name),
+            escape(action_label(&row.risk.recommended_action)), row.risk.score,
+            escape(&reason), escape(validation_label(&row.validation)),
+        ));
+        if !row.note.trim().is_empty() {
+            s.push_str(&format!("<p class=\"note\">{}</p>", escape(&row.note)));
+        }
+        s.push_str("</td></tr>");
+    }
+    s.push_str("</tbody></table>");
+    s
+}
+
 fn html_application(row: &Row) -> String {
     let a = &row.app;
     let tone = match priority(row) {
@@ -367,14 +410,27 @@ pub fn html(scan: &Scan) -> String {
     if scan.demo || scan.cancelled {
         s.push_str("<p class=\"notice warning\">DÉMONSTRATION / SCAN INCOMPLET — aucune désinstallation autorisée.</p>");
     }
-    s.push_str("<h2>Évolution depuis le scan précédent</h2>");
+    let count = |action: &str| {
+        scan.rows
+            .iter()
+            .filter(|r| r.risk.recommended_action == action)
+            .count()
+    };
+    s.push_str(&format!(
+        "<p class=\"scan-summary\"><strong>{} retraits proposés</strong> · {} à vérifier · {} à conserver · {} protégées</p>",
+        count("suggest_uninstall"), count("review"), count("keep"), count("do_not_touch"),
+    ));
+    if scan.comparison.is_some() {
+        s.push_str("<h2>Évolution depuis le scan précédent</h2>");
+    }
     match &scan.comparison {
-        None => s.push_str("<p>Comparaison indisponible pour ce scan.</p>"),
+        None => s.push_str("<p class=\"screen-only\">Comparaison indisponible pour ce scan.</p>"),
         Some(c) if c.previous_scan_id.is_none() => s.push_str(
             "<p>Premier scan complet de ce téléphone : référence initiale enregistrée.</p>",
         ),
         Some(c) => {
             s.push_str(&format!("<p>Nouvelles applications : {} · Retirées : {} · Inchangées : {} · Risque modifié : {}</p>", c.new_apps.len(), c.removed_apps.len(), c.unchanged_count, c.risk_changes.len()));
+            s.push_str("<details class=\"screen-only\"><summary>Détail des changements</summary>");
             for (title, apps) in [
                 ("Nouvelles applications", &c.new_apps),
                 (
@@ -410,11 +466,11 @@ pub fn html(scan: &Scan) -> String {
                     escape(action_label(&r.current_action))
                 ));
             }
+            s.push_str("</details>");
         }
     }
-    s.push_str("<h2>Journal d’intervention · Tweaks</h2>");
-    if scan.interventions.is_empty() {
-        s.push_str("<p>Aucune intervention enregistrée.</p>");
+    if !scan.interventions.is_empty() {
+        s.push_str("<h2>Journal d’intervention · Tweaks</h2>");
     }
     for entry in &scan.interventions {
         s.push_str(&format!(
@@ -425,16 +481,8 @@ pub fn html(scan: &Scan) -> String {
             escape(&entry.detail)
         ));
     }
-    s.push_str("<h2>Résultats du scan</h2><p class=\"muted\">Les champs sans information collectée ne sont pas affichés.</p>");
-    if scan.rows.is_empty() {
-        s.push_str("<p>Aucune application dans ce scan.</p>");
-    }
-    for row in &scan.rows {
-        s.push_str(&html_application(row));
-    }
-    s.push_str("<h2>Résultats des désinstallations</h2>");
-    if scan.uninstalled.is_empty() {
-        s.push_str("<p>Aucune.</p>");
+    if !scan.uninstalled.is_empty() {
+        s.push_str("<h2>Résultats des désinstallations</h2>");
     }
     for u in &scan.uninstalled {
         s.push_str(&format!(
@@ -444,6 +492,15 @@ pub fn html(scan: &Scan) -> String {
             escape(&u.package),
             escape(&u.result)
         ));
+    }
+    s.push_str("<h2>Résultats du scan</h2>");
+    s.push_str(&html_inventory(scan));
+    if !scan.rows.is_empty() {
+        s.push_str("<details class=\"technical-details screen-only\"><summary>Détails techniques complets des applications (hors impression)</summary><p>Permissions, indices, analyse IA et métadonnées restent disponibles ici. L’impression contient la synthèse, l’inventaire, les notes et les résultats d’intervention.</p>");
+        for row in &scan.rows {
+            s.push_str(&html_application(row));
+        }
+        s.push_str("</details>");
     }
     s.push_str("<footer class=\"report-footer\">Microwest · Diagnostic atelier · Décisions humaines · Données locales</footer></main></body></html>");
     s
@@ -482,6 +539,48 @@ mod tests {
         assert!(h.contains("Comparaison indisponible"));
         assert_eq!(csv_cell("=cmd()"), "'=cmd()");
         assert!(csv(&s).unwrap().contains("permissions_granted"));
+    }
+
+    #[test]
+    fn compact_inventory_keeps_every_app_and_full_notes_outside_the_technical_annex() {
+        let risk = Risk {
+            score: 35,
+            category: "review".into(),
+            recommended_action: "review".into(),
+            reasons: vec!["Installée via Google Play".into(), "é".repeat(250)],
+        };
+        let mut scan = Scan::default();
+        for i in 0..60 {
+            scan.rows.push(Row {
+                app: AppInfo {
+                    package_name: format!("org.example.app{i:02}"),
+                    requested_permissions: vec!["android.permission.TECHNICAL_ONLY".into()],
+                    ..Default::default()
+                },
+                risk: risk.clone(),
+                local_risk: risk.clone(),
+                ai: None,
+                ai_text: String::new(),
+                note: format!("Note complète {i}: {}", "à".repeat(300)),
+                validation: "review".into(),
+            });
+        }
+        let rendered = html(&scan);
+        let (summary, annex) = rendered
+            .split_once("<details class=\"technical-details screen-only\">")
+            .unwrap();
+        let inventory = summary.split_once("<tbody>").unwrap().1;
+        assert_eq!(inventory.matches("<tr>").count(), 60);
+        assert!(!inventory.contains("TECHNICAL_ONLY"));
+        assert!(inventory.contains(&format!("{}…", "é".repeat(180))));
+        assert!(!inventory.contains(&"é".repeat(181)));
+        for row in &scan.rows {
+            assert!(inventory.contains(&row.app.package_name));
+            assert!(inventory.contains(&row.note));
+        }
+        assert!(annex.contains("android.permission.TECHNICAL_ONLY"));
+        assert!(annex.contains(&"é".repeat(250)));
+        assert!(summary.contains("60 à vérifier"));
     }
 
     #[test]
