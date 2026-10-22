@@ -200,3 +200,119 @@ fn journal_and_dns_backup_survive_history_and_are_escaped_in_reports() {
     assert!(old.interventions.is_empty());
     assert!(old.dns_backup.is_none());
 }
+
+#[tokio::test]
+async fn mupdf_installation_is_guided_and_missing_apps_cannot_be_verified() {
+    let (dir, adb) = fixture(json!({}));
+    let status = tweaks::status(&adb, "ready").await.unwrap();
+    assert_eq!(status.mupdf, None);
+    assert_eq!(status.pdf_handler, None);
+    assert!(status.warnings.is_empty());
+    assert!(tweaks::execute(&adb, "ready", Action::MupdfStore, None)
+        .await
+        .unwrap()
+        .contains("ne confirme pas"));
+    assert!(!Action::MupdfStore.verifies_state());
+    for action in [Action::PdfChoose, Action::PdfVerify, Action::MupdfEnable] {
+        assert!(tweaks::execute(&adb, "ready", action, None).await.is_err());
+    }
+    let value = state(&dir);
+    let starts: Vec<_> = value["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c[0] == "am" && c[1] == "start")
+        .collect();
+    assert_eq!(starts.len(), 1);
+    assert!(starts[0]
+        .as_array()
+        .unwrap()
+        .contains(&json!("market://details?id=com.artifex.mupdf.viewer.app")));
+    assert!(starts[0]
+        .as_array()
+        .unwrap()
+        .contains(&json!("com.android.vending")));
+}
+
+#[tokio::test]
+async fn mupdf_enable_choose_and_verify_only_the_observed_pdf_handler() {
+    let (dir, adb) = fixture(json!({"disabled":[tweaks::MUPDF], "pdf":"com.old.reader"}));
+    assert_eq!(
+        tweaks::status(&adb, "ready").await.unwrap().mupdf,
+        Some(false)
+    );
+    tweaks::execute(&adb, "ready", Action::MupdfEnable, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        tweaks::status(&adb, "ready").await.unwrap().mupdf,
+        Some(true)
+    );
+    let message = tweaks::execute(&adb, "ready", Action::PdfChoose, None)
+        .await
+        .unwrap();
+    assert!(message.contains("Aucun choix n’a été forcé ni vérifié"));
+    assert!(!Action::PdfChoose.verifies_state());
+    tweaks::execute(&adb, "ready", Action::PdfPreviousSettings, None)
+        .await
+        .unwrap();
+    assert!(tweaks::execute(&adb, "ready", Action::PdfVerify, None)
+        .await
+        .is_err());
+    let mut value = state(&dir);
+    assert!(value["commands"].as_array().unwrap().iter().any(|c| c
+        .as_array()
+        .unwrap()
+        .contains(&json!("package:com.old.reader"))));
+    assert!(value["commands"].as_array().unwrap().iter().any(|c| c
+        .as_array()
+        .unwrap()
+        .contains(&json!("android.intent.action.VIEW_DOWNLOADS"))));
+    value["pdf"] = json!(tweaks::MUPDF);
+    std::fs::write(
+        dir.path().join("state.json"),
+        serde_json::to_vec(&value).unwrap(),
+    )
+    .unwrap();
+    let verified = tweaks::execute(&adb, "ready", Action::PdfVerify, None)
+        .await
+        .unwrap();
+    assert!(verified.contains("sans choix Toujours enregistré"));
+    assert!(Action::PdfVerify.verifies_state());
+    assert!(!Action::PdfVerify.changes_device());
+    assert!(
+        tweaks::execute(&adb, "ready", Action::PdfPreviousSettings, None)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        tweaks::status(&adb, "ready")
+            .await
+            .unwrap()
+            .pdf_handler
+            .as_deref(),
+        Some(tweaks::MUPDF)
+    );
+}
+
+#[tokio::test]
+async fn unsupported_pdf_resolution_does_not_hide_other_tweaks_or_claim_success() {
+    let (_dir, adb) = fixture(
+        json!({"pdf_error":true, "enabled":[tweaks::MUPDF,tweaks::CHROME,tweaks::SAMSUNG]}),
+    );
+    let status = tweaks::status(&adb, "ready").await.unwrap();
+    assert_eq!(status.pdf_handler, None);
+    assert_eq!(status.chrome, Some(true));
+    assert_eq!(status.mupdf, Some(true));
+    assert!(status
+        .warnings
+        .iter()
+        .any(|s| s.contains("Lecteur PDF non vérifié")));
+    assert!(tweaks::execute(&adb, "ready", Action::PdfVerify, None)
+        .await
+        .is_err());
+    let (_dir, adb) = fixture(json!({"open_error":true}));
+    assert!(tweaks::execute(&adb, "ready", Action::MupdfStore, None)
+        .await
+        .is_err());
+}

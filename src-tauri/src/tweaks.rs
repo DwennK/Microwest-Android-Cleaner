@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub const CHROME: &str = "com.android.chrome";
 pub const SAMSUNG: &str = "com.sec.android.app.sbrowser";
 pub const ONE_UI: &str = "com.sec.android.app.launcher";
+// Artifex's MuPDF viewer, verified against its official Google Play listing.
+pub const MUPDF: &str = "com.artifex.mupdf.viewer.app";
 const ADGUARD: &str = "dns.adguard-dns.com";
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -22,6 +24,11 @@ pub enum Action {
     HomeRestore,
     HomeSettings,
     PlayStore,
+    MupdfStore,
+    MupdfEnable,
+    PdfChoose,
+    PdfPreviousSettings,
+    PdfVerify,
     ConfirmAdblock,
     ConfirmUpdates,
 }
@@ -40,6 +47,11 @@ impl Action {
             Self::HomeRestore => "Rétablir One UI Home",
             Self::HomeSettings => "Choisir l’écran d’accueil",
             Self::PlayStore => "Ouvrir le Play Store",
+            Self::MupdfStore => "Ouvrir la fiche officielle MuPDF viewer",
+            Self::MupdfEnable => "Réactiver MuPDF viewer",
+            Self::PdfChoose => "Choisir MuPDF pour les PDF sur le téléphone",
+            Self::PdfPreviousSettings => "Ouvrir les réglages du lecteur PDF actuel",
+            Self::PdfVerify => "Vérifier la résolution des PDF vers MuPDF",
             Self::ConfirmAdblock => "Activation du bloqueur dans Samsung Browser",
             Self::ConfirmUpdates => "Mises à jour Play Store",
         }
@@ -53,10 +65,14 @@ impl Action {
                 | Self::ChromeEnable
                 | Self::SamsungEnable
                 | Self::HomeRestore
+                | Self::MupdfEnable
         )
     }
     pub fn manual(self) -> bool {
         matches!(self, Self::ConfirmAdblock | Self::ConfirmUpdates)
+    }
+    pub fn verifies_state(self) -> bool {
+        self.changes_device() || matches!(self, Self::PdfVerify)
     }
 }
 
@@ -65,6 +81,8 @@ pub struct Status {
     pub dns: Option<DnsSettings>,
     pub chrome: Option<bool>,
     pub samsung: Option<bool>,
+    pub mupdf: Option<bool>,
+    pub pdf_handler: Option<String>,
     pub default_browser: Option<String>,
     pub home: Option<String>,
     pub one_ui_available: bool,
@@ -249,6 +267,47 @@ async fn resolve(adb: &Adb, serial: &str, browser: bool) -> Result<Option<String
     let raw = shell(adb, serial, &args).await?;
     Ok(crate::adb::parse_default_home(&raw))
 }
+async fn resolve_pdf(adb: &Adb, serial: &str) -> Result<Option<String>> {
+    // Resolve only: this synthetic content URI is never opened or read.
+    // A resolved handler may be the only candidate, not a persisted "Always" choice.
+    let raw = adb
+        .shell(
+            serial,
+            &[
+                "cmd",
+                "package",
+                "resolve-activity",
+                "--brief",
+                "--user",
+                "0",
+                "-a",
+                "android.intent.action.VIEW",
+                "-c",
+                "android.intent.category.DEFAULT",
+                "-t",
+                "application/pdf",
+                "-d",
+                "content://ch.microwest.android-cleaner/probe.pdf",
+            ],
+            15,
+        )
+        .await?;
+    if matches!(raw.trim(), "No activity found" | "No activities found") {
+        return Ok(None);
+    }
+    Ok(crate::adb::parse_default_home(&checked(raw)?))
+}
+
+async fn require_mupdf(adb: &Adb, serial: &str) -> Result<()> {
+    if !packages(adb, serial, "-e").await?.contains(MUPDF) {
+        return Err(
+            "Installez ou réactivez MuPDF viewer dans le profil principal, puis actualisez l’état."
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 pub async fn status(adb: &Adb, serial: &str) -> Result<Status> {
     require_owner(adb, serial).await?;
     let enabled = packages(adb, serial, "-e").await?;
@@ -283,10 +342,19 @@ pub async fn status(adb: &Adb, serial: &str) -> Result<Status> {
         Ok(v) => default_browser = v,
         Err(e) => warnings.push(e),
     }
+    let pdf_handler = match resolve_pdf(adb, serial).await {
+        Ok(v) => v,
+        Err(e) => {
+            warnings.push(format!("Lecteur PDF non vérifié : {e}"));
+            None
+        }
+    };
     Ok(Status {
         dns,
         chrome: app_state(CHROME),
         samsung: app_state(SAMSUNG),
+        mupdf: app_state(MUPDF),
+        pdf_handler,
         default_browser,
         home,
         one_ui_available: enabled.contains(ONE_UI),
@@ -381,6 +449,46 @@ pub async fn execute(
         }
         Action::ChromeEnable => set_enabled(adb, serial, CHROME, true).await?,
         Action::SamsungEnable => set_enabled(adb, serial, SAMSUNG, true).await?,
+        Action::MupdfEnable => {
+            if !packages(adb, serial, "-d").await?.contains(MUPDF) {
+                return Err("MuPDF viewer n’est pas installé et désactivé dans ce profil. Actualisez l’état ou ouvrez sa fiche Play Store.".into());
+            }
+            set_enabled(adb, serial, MUPDF, true).await?;
+        }
+        Action::PdfChoose => {
+            require_mupdf(adb, serial).await?;
+            open(adb, serial, &["-a", "android.intent.action.VIEW_DOWNLOADS"]).await?;
+            return Ok("Téléchargements ouverts. Sur le téléphone, touchez un PDF puis choisissez MuPDF viewer → Toujours si Android le propose. Si un autre lecteur s’ouvre directement, effacez son choix par défaut dans ses réglages, puis réessayez. Aucun choix n’a été forcé ni vérifié.".into());
+        }
+        Action::PdfPreviousSettings => {
+            let package = resolve_pdf(adb, serial).await?
+                .ok_or("Aucun lecteur PDF unique détecté. Ouvrez un PDF et choisissez MuPDF → Toujours sur le téléphone.")?;
+            if package == MUPDF {
+                return Err(
+                    "MuPDF est déjà le lecteur détecté ; aucun ancien choix à effacer.".into(),
+                );
+            }
+            crate::adb::validate_package(&package)?;
+            open(
+                adb,
+                serial,
+                &[
+                    "-a",
+                    "android.settings.APPLICATION_DETAILS_SETTINGS",
+                    "-d",
+                    &format!("package:{package}"),
+                ],
+            )
+            .await?;
+            return Ok("Réglages du lecteur PDF détecté ouverts. Sur le téléphone : Ouvrir par défaut / Définir par défaut → Effacer les actions par défaut, puis ouvrez un PDF et choisissez MuPDF → Toujours. Aucune donnée de l’application n’a été effacée par cet outil.".into());
+        }
+        Action::PdfVerify => {
+            require_mupdf(adb, serial).await?;
+            if resolve_pdf(adb, serial).await?.as_deref() != Some(MUPDF) {
+                return Err("MuPDF n’est pas le lecteur PDF résolu par Android. Ouvrez un PDF, choisissez MuPDF → Toujours si proposé, puis vérifiez à nouveau.".into());
+            }
+            return Ok("MuPDF viewer installé et actif ; Android résout l’intention application/pdf vers MuPDF. Cela peut être le seul lecteur disponible, sans choix Toujours enregistré. Vérifiez aussi l’ouverture d’un PDF depuis l’application utilisée par le client : certaines applications emploient leur propre lecteur.".into());
+        }
         Action::HomeRestore => {
             let raw = shell(
                 adb,
@@ -441,11 +549,13 @@ pub async fn execute(
             )
             .await?
         }
-        Action::SamsungStore | Action::AdblockStore => {
+        Action::SamsungStore | Action::AdblockStore | Action::MupdfStore => {
             let uri = format!(
                 "market://details?id={}",
                 if matches!(action, Action::SamsungStore) {
                     SAMSUNG
+                } else if matches!(action, Action::MupdfStore) {
+                    MUPDF
                 } else {
                     "com.adguard.android.contentblocker"
                 }

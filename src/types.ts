@@ -132,6 +132,8 @@ export interface TweakStatus {
   dns: DnsSettings | null;
   chrome: boolean | null;
   samsung: boolean | null;
+  mupdf: boolean | null;
+  pdf_handler: string | null;
   default_browser: string | null;
   home: string | null;
   one_ui_available: boolean;

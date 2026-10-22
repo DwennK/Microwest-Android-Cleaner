@@ -614,7 +614,7 @@ pub async fn apply_tweak(
         Ok(detail) => {
             entry.status = if action.manual() {
                 "manual"
-            } else if action.changes_device() {
+            } else if action.verifies_state() {
                 "verified"
             } else {
                 "opened"

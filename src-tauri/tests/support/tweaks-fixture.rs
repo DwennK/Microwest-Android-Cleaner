@@ -60,10 +60,18 @@ fn main() {
         ["cmd", "package", "resolve-activity", rest @ ..] => {
             let key = if rest.contains(&"android.intent.category.HOME") {
                 "home"
+            } else if rest.contains(&"application/pdf") {
+                "pdf"
             } else {
                 "browser"
             };
-            println!("{}/.Main", state[key].as_str().unwrap());
+            if key == "pdf" && state["pdf_error"].as_bool().unwrap_or(false) {
+                println!("Error: PDF resolution unavailable");
+            } else if let Some(package) = state[key].as_str() {
+                println!("{package}/.Main");
+            } else {
+                println!("No activity found");
+            }
         }
         ["cmd", "package", "query-activities", ..] => {
             println!("com.sec.android.app.launcher/.Main")

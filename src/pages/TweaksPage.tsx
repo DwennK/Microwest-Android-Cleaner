@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import { Globe, House, RefreshCw, ShieldCheck, Store } from "lucide-react";
+import {
+  FileText,
+  Globe,
+  House,
+  RefreshCw,
+  ShieldCheck,
+  Store,
+} from "lucide-react";
 import { Badge } from "../components/app-primitives";
 import { InterventionJournal } from "../components/InterventionJournal";
 import { Button } from "../components/ui/button";
@@ -14,6 +21,7 @@ const dnsModes: Record<string, string> = {
 };
 const dnsMode = (mode: string | null) =>
   dnsModes[mode || ""] || "Valeur Android par défaut";
+const mupdfPackage = "com.artifex.mupdf.viewer.app";
 
 type Props = Pick<
   AppController,
@@ -372,6 +380,85 @@ export function TweaksPage({
               Confirmer les mises à jour manuellement
             </Button>
           </div>
+        </section>
+        <section className="card p-4 xl:col-span-2 xl:row-start-4">
+          <h2 className="section-title flex items-center gap-2">
+            <FileText size={18} /> PDF · MuPDF viewer
+          </h2>
+          <div className="my-3 flex flex-wrap gap-2">
+            <Badge>MuPDF : {appState(status?.mupdf)}</Badge>
+            <Badge>
+              Lecteur PDF détecté :{" "}
+              {status?.pdf_handler === mupdfPackage
+                ? "MuPDF viewer"
+                : status?.pdf_handler || "Aucun choix unique identifié"}
+            </Badge>
+          </div>
+          <ol className="mb-3 list-decimal space-y-1 pl-5 text-xs leading-5 text-muted-foreground">
+            <li>
+              Installez MuPDF viewer d’Artifex depuis sa fiche Play Store, puis
+              actualisez l’état.
+            </li>
+            <li>
+              Ouvrez un fichier PDF depuis Téléchargements et choisissez MuPDF
+              viewer → Toujours si Android le propose.
+            </li>
+            <li>
+              Si un ancien lecteur s’ouvre directement, ouvrez ses réglages
+              ci-dessous puis Ouvrir par défaut → Effacer les actions par
+              défaut. Réessayez avec le PDF.
+            </li>
+          </ol>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={disabled}
+              onClick={() => apply("mupdf_store")}
+            >
+              {status?.mupdf === null
+                ? "Installer MuPDF (Play Store)"
+                : "Fiche MuPDF (Play Store)"}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={disabled || status?.mupdf !== false}
+              onClick={() => apply("mupdf_enable")}
+            >
+              Réactiver MuPDF
+            </Button>
+            <Button
+              disabled={disabled || status?.mupdf !== true}
+              onClick={() => apply("pdf_choose")}
+            >
+              Choisir MuPDF pour les PDF
+            </Button>
+            <Button
+              variant="outline"
+              disabled={
+                disabled ||
+                !status?.pdf_handler ||
+                status.pdf_handler === mupdfPackage
+              }
+              onClick={() => apply("pdf_previous_settings")}
+            >
+              Réglages de l’ancien lecteur
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={disabled || status?.mupdf !== true}
+              onClick={() => apply("pdf_verify")}
+            >
+              Vérifier le choix MuPDF
+            </Button>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            L’installation et le choix « Toujours » se terminent sur le
+            téléphone. Le contrôle relit le lecteur sélectionné par Android ; il
+            ne prouve pas qu’un choix permanent est enregistré. Certaines
+            applications gardent leur propre lecteur PDF. Testez aussi depuis
+            l’application du client. Si Téléchargements n’est pas disponible,
+            utilisez l’application Fichiers du téléphone.
+          </p>
         </section>
       </div>
       <InterventionJournal entries={scan?.interventions} />
