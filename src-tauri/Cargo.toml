@@ -1,6 +1,6 @@
 [package]
 name = "microwest-android-cleaner"
-version = "2.1.1"
+version = "2.1.2"
 description = "Microwest Android Cleaner"
 edition = "2021"
 default-run = "microwest-android-cleaner"

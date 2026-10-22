@@ -1994,7 +1994,7 @@ dependencies = [
 
 [[package]]
 name = "microwest-android-cleaner"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "base64 0.22.1",
  "chrono",
